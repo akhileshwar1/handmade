@@ -1,6 +1,19 @@
 #include <stdio.h>
 #include <X11/Xlib.h>
 
+void handleEvent(XEvent event) {
+    switch (event.type) {
+        case KeyPress:
+            printf("key pressed \n");
+            break;
+        case ConfigureNotify:
+            printf("structure changed\n");
+            break;
+        default:
+            printf("ignore event\n");
+    }
+}
+
 int main() {
     Display *display = XOpenDisplay(NULL);
     if (!display) {
@@ -33,5 +46,6 @@ int main() {
         XEvent event;
         printf("Waiting for next event\n");
         XNextEvent(display, &event);
+        handleEvent(event);
     }
 }
