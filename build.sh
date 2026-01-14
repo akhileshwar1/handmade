@@ -4,6 +4,6 @@ set -e
 clang \
     -g -O0 \
     -Wall -Wextra \
-    main.c \
+    main.cpp \
     -o handmade.out \
     -lX11
