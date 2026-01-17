@@ -7,22 +7,16 @@
 uint32_t *data;
 XImage *image;
 
-void update_data(int window_width, int window_height) {
+void renderweirdgradient(int window_width, int window_height) {
     data = (uint32_t *)malloc(window_width*window_height*4); // 4 bytes for a pixel RR GG BB XX
     uint32_t *ptr = data;
     for (int y = 0; y < window_height; ++y) {
 
         for (int x = 0; x < window_width; ++x) {
-            uint32_t a = 0;
-            uint32_t r = 0;
-            uint32_t g = 0;
-            uint32_t b = 255;
-
-            // For RGBA format:
-            uint32_t blue = (a << 24) | (r << 16) | (g << 8) | b;
-            ptr[x] = blue;
+            uint8_t blue = (uint8_t)x;
+            uint8_t green = (uint8_t)y;
+            *ptr++ = (green << 8) | blue;
         }
-        ptr = ptr + window_width;
     }
 }
 
@@ -32,7 +26,7 @@ void Xupdate_window(Display *display, Window window, GC gc) {
     }
     XWindowAttributes attrs = {};
     XGetWindowAttributes(display, window, &attrs);
-    update_data(attrs.width, attrs.height);
+    renderweirdgradient(attrs.width, attrs.height);
     int screen = DefaultScreen(display);
     Visual *visual = DefaultVisual(display, screen);
     int depth = DefaultDepth(display, screen);
