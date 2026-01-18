@@ -31,16 +31,19 @@ void renderweirdgradient(X_offscreen_buffer *buffer) {
     }
 }
 
-void Xupdate_window(Display *display, Window window, GC gc,
-                    X_offscreen_buffer *buffer) {
-    if(buffer->image) {
-        XDestroyImage(buffer->image); // also frees the inner data.
-    }
+void XUpdateBufferDims(Display *display, Window window, X_offscreen_buffer *buffer) {
     XWindowAttributes attrs = {};
     XGetWindowAttributes(display, window, &attrs);
     buffer->window_width = attrs.width;
     buffer->window_height = attrs.height;
-    renderweirdgradient(buffer);
+}
+
+void XDisplayBufferInWindow(Display *display, Window window, GC gc,
+                    X_offscreen_buffer *buffer) {
+    if(buffer->image) {
+        XDestroyImage(buffer->image); // also frees the inner data.
+    }
+    
     buffer->image = XCreateImage(display, buffer->visual, buffer->depth, ZPixmap,
                                  0, (char *)buffer->data, buffer->window_width,
                                  buffer->window_height, 8, buffer->window_width*4);
@@ -56,7 +59,9 @@ void handleEvent(Display *display, Window window, GC gc, XEvent event,
             break;
         case ConfigureNotify: {
             printf("structure changed\n");
-            Xupdate_window(display, window, gc, buffer);
+            XUpdateBufferDims(display, window, buffer);
+            renderweirdgradient(buffer);
+            XDisplayBufferInWindow(display, window, gc, buffer);
         }
             break;
         case Expose:
@@ -106,7 +111,10 @@ int main() {
             XNextEvent(display, &event);
             handleEvent(display, window, gc, event, &buffer);
         }
-        Xupdate_window(display, window, gc, &buffer);
+       
+        XUpdateBufferDims(display, window, &buffer);
+        renderweirdgradient(&buffer);
+        XDisplayBufferInWindow(display, window, gc, &buffer);
         buffer.XOffset++;
         buffer.YOffset++;
     }
