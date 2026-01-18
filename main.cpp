@@ -4,47 +4,59 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
-uint32_t *data;
-XImage *image;
+typedef struct {
+    uint32_t *data;
+    XImage *image;
+    int window_width;
+    int window_height;
+    int XOffset;
+    int YOffset;
+    int screen; 
+    Visual *visual;
+    int depth; 
+} X_offscreen_buffer;
 
-void renderweirdgradient(int window_width, int window_height) {
-    data = (uint32_t *)malloc(window_width*window_height*4); // 4 bytes for a pixel RR GG BB XX
-    uint32_t *ptr = data;
-    for (int y = 0; y < window_height; ++y) {
+X_offscreen_buffer buffer = {};
 
-        for (int x = 0; x < window_width; ++x) {
-            uint8_t blue = (uint8_t)x;
-            uint8_t green = (uint8_t)y;
+void renderweirdgradient(X_offscreen_buffer *buffer) {
+    buffer->data = (uint32_t *)malloc(buffer->window_width*buffer->window_height*4); // 4 bytes for a pixel RR GG BB XX
+    uint32_t *ptr = buffer->data;
+    for (int y = 0; y < buffer->window_height; ++y) {
+
+        for (int x = 0; x < buffer->window_width; ++x) {
+            uint8_t blue = (uint8_t)(x + buffer->XOffset);
+            uint8_t green = (uint8_t)(y + buffer->YOffset);
             *ptr++ = (green << 8) | blue;
         }
     }
 }
 
-void Xupdate_window(Display *display, Window window, GC gc) {
-    if(image) {
-        XDestroyImage(image); // also frees the inner data.
+void Xupdate_window(Display *display, Window window, GC gc,
+                    X_offscreen_buffer *buffer) {
+    if(buffer->image) {
+        XDestroyImage(buffer->image); // also frees the inner data.
     }
     XWindowAttributes attrs = {};
     XGetWindowAttributes(display, window, &attrs);
-    renderweirdgradient(attrs.width, attrs.height);
-    int screen = DefaultScreen(display);
-    Visual *visual = DefaultVisual(display, screen);
-    int depth = DefaultDepth(display, screen);
+    buffer->window_width = attrs.width;
+    buffer->window_height = attrs.height;
+    renderweirdgradient(buffer);
+    buffer->image = XCreateImage(display, buffer->visual, buffer->depth, ZPixmap,
+                                 0, (char *)buffer->data, buffer->window_width,
+                                 buffer->window_height, 8, buffer->window_width*4);
     
-    image = XCreateImage(display, visual, depth, ZPixmap, 0, (char *)data, attrs.width, attrs.height, 8,
-                                 attrs.width*4);
-    
-    XPutImage(display, window, gc, image, 0, 0, 0, 0, attrs.width, attrs.height);
+    XPutImage(display, window, gc, buffer->image, 0, 0, 0, 0, buffer->window_width, buffer->window_height);
 }
 
-void handleEvent(Display *display, Window window, GC gc, XEvent event) {
+void handleEvent(Display *display, Window window, GC gc, XEvent event,
+                 X_offscreen_buffer *buffer) {
     switch (event.type) {
         case KeyPress:
             printf("key pressed \n");
             break;
         case ConfigureNotify: {
             printf("structure changed\n");
-            Xupdate_window(display, window, gc);
+            Xupdate_window(display, window, gc, buffer);
         }
             break;
         case Expose:
@@ -64,10 +76,11 @@ int main() {
 
     printf("X server connected to the display\n");
     Window parent = DefaultRootWindow(display);
-    unsigned int width = 500;
-    unsigned int height = 500;
-    unsigned int border_width = 0;
-    unsigned long background = 0;
+    buffer.window_width = 500;
+    buffer.window_height = 500;
+    buffer.screen = DefaultScreen(display);
+    buffer.visual = DefaultVisual(display, buffer.screen);
+    buffer.depth = DefaultDepth(display, buffer.screen);
 
     /* Values */
     XSetWindowAttributes attrs = {};
@@ -78,19 +91,24 @@ int main() {
 
     unsigned long valuemask = CWEventMask;
     
-    Window window = XCreateWindow(display, parent, 0, 0, width, height, border_width, CopyFromParent,
+    Window window = XCreateWindow(display, parent, 0, 0, buffer.window_width, buffer.window_height, 0, CopyFromParent,
                        InputOutput, CopyFromParent, valuemask, &attrs);
     XMapWindow(display, window);
     XGCValues gc_values = {};
     GC gc = XCreateGC(display, window, 0, &gc_values);
 
     printf("Window created and mapped\n"); 
+    bool Running = true;
 
-    for (;;){
-        XEvent event;
-        printf("Waiting for next event\n");
-        XNextEvent(display, &event);
-        handleEvent(display, window, gc, event);
+    while (Running) {
+        while (XPending(display)) {
+            XEvent event;
+            XNextEvent(display, &event);
+            handleEvent(display, window, gc, event, &buffer);
+        }
+        Xupdate_window(display, window, gc, &buffer);
+        buffer.XOffset++;
+        buffer.YOffset++;
     }
 
 }
