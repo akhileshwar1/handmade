@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/keysym.h>
 
 typedef struct {
     uint32_t *data;
@@ -57,13 +58,28 @@ void handleEvent(Display *display, Window window, GC gc, XEvent event,
         case KeyPress:
             printf("key pressed \n");
             break;
+        case KeyRelease: {
+            printf("key released\n");
+            KeySym sym = XLookupKeysym(&event.xkey, 0);
+            if (sym == XK_w) {
+                buffer->YOffset++;
+            }
+            if (sym == XK_a) {
+                buffer->XOffset--;
+            }
+            if (sym == XK_s) {
+                buffer->YOffset--;
+            }
+            if (sym == XK_d) {
+                buffer->XOffset++;
+            }
+        } break;
         case ConfigureNotify: {
             printf("structure changed\n");
             XUpdateBufferDims(display, window, buffer);
             renderweirdgradient(buffer);
             XDisplayBufferInWindow(display, window, gc, buffer);
-        }
-            break;
+        } break;
         case Expose:
             printf("expose\n");
             break;
@@ -104,6 +120,8 @@ int main() {
 
     printf("Window created and mapped\n"); 
     bool Running = true;
+    XGrabKeyboard(display, window, False, GrabModeAsync, GrabModeAsync, CurrentTime);
+    XAutoRepeatOn(display); 
 
     while (Running) {
         while (XPending(display)) {
@@ -115,8 +133,8 @@ int main() {
         XUpdateBufferDims(display, window, &buffer);
         renderweirdgradient(&buffer);
         XDisplayBufferInWindow(display, window, gc, &buffer);
-        buffer.XOffset++;
-        buffer.YOffset++;
+        // buffer.XOffset++;
+        // buffer.YOffset++;
     }
 
 }
