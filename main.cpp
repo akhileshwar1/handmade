@@ -133,7 +133,7 @@ int main() {
         XUpdateBufferDims(display, window, &buffer);
         renderweirdgradient(&buffer);
         XDisplayBufferInWindow(display, window, gc, &buffer);
-        // buffer.XOffset++;
+        buffer.XOffset++;
         // buffer.YOffset++;
     }
 
