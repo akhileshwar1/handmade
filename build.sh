@@ -7,4 +7,5 @@ clang \
     -fsanitize=address \
     main.cpp \
     -o handmade.out \
-    -lX11
+    -lX11 \
+    -lasound

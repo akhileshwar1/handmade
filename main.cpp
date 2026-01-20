@@ -4,7 +4,10 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
+#include <alsa/asoundlib.h>
+#include <math.h>
 
+enum { SAMPLE_RATE = 48000, };
 typedef struct {
     uint32_t *data;
     XImage *image;
@@ -30,6 +33,34 @@ void renderweirdgradient(X_offscreen_buffer *buffer) {
             *ptr++ = (green << 8) | blue;
         }
     }
+}
+
+void sine_wave_sound(short *buffer, size_t sample_count, int freq) {
+    for (int i = 0; i < sample_count; i++) {
+        buffer[i] = 10000 * sinf(2*M_PI*freq*((float)i/SAMPLE_RATE));
+    }
+}
+
+void XPlaySound(short *samples_buffer) {
+    snd_pcm_t *pcm;
+    snd_pcm_open(&pcm, "default", SND_PCM_STREAM_PLAYBACK, 0);
+
+    snd_pcm_hw_params_t *hw_params;
+    snd_pcm_hw_params_alloca(&hw_params);
+    snd_pcm_hw_params_any(pcm, hw_params);
+    snd_pcm_hw_params_set_access(pcm, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
+    snd_pcm_hw_params_set_format(pcm, hw_params, SND_PCM_FORMAT_S16_LE);
+    snd_pcm_hw_params_set_channels(pcm, hw_params, 1);
+    snd_pcm_hw_params_set_rate(pcm, hw_params, 48000, 0);
+    snd_pcm_hw_params_set_periods(pcm, hw_params, 10, 0);
+    snd_pcm_hw_params_set_period_time(pcm, hw_params, 100000, 0); // 0.1 seconds
+    snd_pcm_hw_params(pcm, hw_params);
+
+    // write the samples.
+    snd_pcm_writei(pcm, samples_buffer, 48000);
+    // wait for the device to play all our samples.
+    snd_pcm_drain(pcm);
+    snd_pcm_close(pcm);
 }
 
 void XUpdateBufferDims(Display *display, Window window, X_offscreen_buffer *buffer) {
@@ -112,8 +143,9 @@ int main() {
 
     unsigned long valuemask = CWEventMask;
     
-    Window window = XCreateWindow(display, parent, 0, 0, buffer.window_width, buffer.window_height, 0, CopyFromParent,
-                       InputOutput, CopyFromParent, valuemask, &attrs);
+    Window window = XCreateWindow(display, parent, 0, 0, buffer.window_width,
+                                  buffer.window_height, 0, CopyFromParent,
+                                  InputOutput, CopyFromParent, valuemask, &attrs);
     XMapWindow(display, window);
     XGCValues gc_values = {};
     GC gc = XCreateGC(display, window, 0, &gc_values);
@@ -123,13 +155,17 @@ int main() {
     XGrabKeyboard(display, window, False, GrabModeAsync, GrabModeAsync, CurrentTime);
     XAutoRepeatOn(display); 
 
+    short samples_buffer[SAMPLE_RATE];
+    sine_wave_sound(&samples_buffer[0], SAMPLE_RATE, 200);
+    XPlaySound(samples_buffer);
     while (Running) {
         while (XPending(display)) {
             XEvent event;
             XNextEvent(display, &event);
             handleEvent(display, window, gc, event, &buffer);
         }
-       
+      
+        // for the animation.
         XUpdateBufferDims(display, window, &buffer);
         renderweirdgradient(&buffer);
         XDisplayBufferInWindow(display, window, gc, &buffer);
