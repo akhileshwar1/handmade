@@ -7,9 +7,16 @@
 #include <alsa/asoundlib.h>
 #include <math.h>
 
+typedef uint8_t uint8;
+typedef uint16_t uint16;
+typedef uint32_t uint32;
+typedef uint64_t uint64;
+typedef float real32;
+typedef double real64;
+
 enum { SAMPLE_RATE = 48000, };
 typedef struct {
-    uint32_t *data;
+    uint32 *data;
     XImage *image;
     int window_width;
     int window_height;
@@ -23,13 +30,13 @@ typedef struct {
 X_offscreen_buffer buffer = {};
 
 void renderweirdgradient(X_offscreen_buffer *buffer) {
-    buffer->data = (uint32_t *)malloc(buffer->window_width*buffer->window_height*4); // 4 bytes for a pixel RR GG BB XX
-    uint32_t *ptr = buffer->data;
+    buffer->data = (uint32 *)malloc(buffer->window_width*buffer->window_height*4); // 4 bytes for a pixel RR GG BB XX
+    uint32 *ptr = buffer->data;
     for (int y = 0; y < buffer->window_height; ++y) {
 
         for (int x = 0; x < buffer->window_width; ++x) {
-            uint8_t blue = (uint8_t)(x + buffer->XOffset);
-            uint8_t green = (uint8_t)(y + buffer->YOffset);
+            uint8 blue = (uint8)(x + buffer->XOffset);
+            uint8 green = (uint8)(y + buffer->YOffset);
             *ptr++ = (green << 8) | blue;
         }
     }
