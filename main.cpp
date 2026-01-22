@@ -41,6 +41,18 @@ void sine_wave_sound(short *buffer, size_t sample_count, int freq) {
     }
 }
 
+void square_wave_sound(short *buffer, size_t sample_count) {
+    short value = 16000;
+    int period = 0;
+    for (int i = 0; i < sample_count; i++) {
+        if (period == 10) {
+            period = 0;
+            value = -value;
+        }
+        buffer[i] = value;
+    }
+}
+
 void XPlaySound(short *samples_buffer) {
     snd_pcm_t *pcm;
     snd_pcm_open(&pcm, "default", SND_PCM_STREAM_PLAYBACK, 0);
@@ -156,7 +168,8 @@ int main() {
     XAutoRepeatOn(display); 
 
     short samples_buffer[SAMPLE_RATE];
-    sine_wave_sound(&samples_buffer[0], SAMPLE_RATE, 200);
+    // sine_wave_sound(&samples_buffer[0], SAMPLE_RATE, 200);
+    square_wave_sound(&samples_buffer[0], SAMPLE_RATE);
     XPlaySound(samples_buffer);
     while (Running) {
         while (XPending(display)) {
