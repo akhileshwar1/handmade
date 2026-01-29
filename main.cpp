@@ -261,6 +261,7 @@ int main() {
         }
       
         // for the animation.
+        // TODO: return the error codes from these functions as well.
         XUpdateBufferDims(display, window, &buffer);
         renderweirdgradient(&buffer);
         XDisplayBufferInWindow(display, window, gc, &buffer);
