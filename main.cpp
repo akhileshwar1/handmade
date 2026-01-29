@@ -15,7 +15,6 @@ typedef int16_t int16;
 typedef float real32;
 typedef double real64;
 
-enum { SAMPLE_RATE = 48000, };
 typedef struct {
     uint32 *data;
     XImage *image;
@@ -221,6 +220,7 @@ int main() {
     Display *display = XOpenDisplay(NULL);
     if (!display) {
         printf("Display not found\n");
+        return -1;
     }
 
     printf("X server connected to the display\n");
@@ -268,6 +268,7 @@ int main() {
         err = XFillSoundBuffer(&sound_config);
         if (err < 0) {
             printf("Sound error \n");
+            return err;
         }
 
         // buffer.YOffset++;
