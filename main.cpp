@@ -6,6 +6,8 @@
 #include <X11/keysym.h>
 #include <alsa/asoundlib.h>
 #include <math.h>
+#include <time.h>
+#include <x86intrin.h>
 
 typedef uint8_t uint8;
 typedef uint16_t uint16;
@@ -14,6 +16,7 @@ typedef uint64_t uint64;
 typedef int16_t int16;
 typedef float real32;
 typedef double real64;
+typedef struct timespec timespec;
 
 typedef struct {
     uint32 *data;
@@ -252,7 +255,10 @@ int main() {
     XGrabKeyboard(display, window, False, GrabModeAsync, GrabModeAsync, CurrentTime);
     XAutoRepeatOn(display); 
 
-    int err = XInitSound(&sound_config);
+    // int err = XInitSound(&sound_config); 
+    timespec lastTime;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &lastTime);
+    unsigned long long lastTimeClock = __rdtsc();
     while (Running) {
         while (XPending(display)) {
             XEvent event;
@@ -266,11 +272,27 @@ int main() {
         renderweirdgradient(&buffer);
         XDisplayBufferInWindow(display, window, gc, &buffer);
         buffer.XOffset++;
-        err = XFillSoundBuffer(&sound_config);
-        if (err < 0) {
-            printf("Sound error \n");
-            return err;
-        }
+        // err = XFillSoundBuffer(&sound_config);
+        // if (err < 0) {
+        //     printf("Sound error \n");
+        //     return err;
+        // }
+
+        timespec endTime;
+        clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
+
+        real64 timeElapsed = endTime.tv_nsec - lastTime.tv_nsec;
+        real64 timeElapsedMS = timeElapsed / (1000.0f * 1000.0f); 
+        real64 fps = 1000.0f / timeElapsedMS;
+        printf("time elapsed in ms: %f\n", timeElapsedMS);
+        printf("FPS: %f\n", fps);
+        lastTime = endTime;
+
+        unsigned long long endTimeClock = __rdtsc();
+        real64 clockElapsed = endTimeClock - lastTimeClock; // in 10^13 order. 
+        real64 clockTimeElapsedMS = (1000.0f * 10000.0f) / clockElapsed;
+        printf("Clock time elapsed in ms : %f\n", clockTimeElapsedMS);
+        lastTimeClock = endTimeClock;
 
         // buffer.YOffset++;
     }
