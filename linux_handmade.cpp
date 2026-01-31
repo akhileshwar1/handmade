@@ -18,17 +18,16 @@ typedef float real32;
 typedef double real64;
 typedef struct timespec timespec;
 
+#include "handmade.cpp"
+
 typedef struct {
-    uint32 *data;
     XImage *image;
-    int window_width;
-    int window_height;
-    int XOffset;
-    int YOffset;
     int screen; 
     Visual *visual;
     int depth; 
 } X_offscreen_buffer;
+
+
 
 typedef struct {
     snd_pcm_t *pcm;
@@ -38,19 +37,6 @@ typedef struct {
     real32 phase;
     real32 phase_increment;
 } X_sound_config;
-
-void renderweirdgradient(X_offscreen_buffer *buffer) {
-    buffer->data = (uint32 *)malloc(buffer->window_width*buffer->window_height*4); // 4 bytes for a pixel RR GG BB XX
-    uint32 *ptr = buffer->data;
-    for (int y = 0; y < buffer->window_height; ++y) {
-
-        for (int x = 0; x < buffer->window_width; ++x) {
-            uint8 blue = (uint8)(x + buffer->XOffset);
-            uint8 green = (uint8)(y + buffer->YOffset);
-            *ptr++ = (green << 8) | blue;
-        }
-    }
-}
 
 int XInitSound(X_sound_config *sound_config) {
     snd_pcm_state_t state;
@@ -108,28 +94,28 @@ int XInitSound(X_sound_config *sound_config) {
     return err;
 }
 
-void XUpdateBufferDims(Display *display, Window window, X_offscreen_buffer *buffer) {
+void XUpdateBufferDims(Display *display, Window window, Offscreen_buffer *buffer) {
     XWindowAttributes attrs = {};
     XGetWindowAttributes(display, window, &attrs);
-    buffer->window_width = attrs.width;
-    buffer->window_height = attrs.height;
+    buffer->width = attrs.width;
+    buffer->height = attrs.height;
 }
 
 void XDisplayBufferInWindow(Display *display, Window window, GC gc,
-                    X_offscreen_buffer *buffer) {
-    if(buffer->image) {
-        XDestroyImage(buffer->image); // also frees the inner data.
+                    X_offscreen_buffer *xbuffer, Offscreen_buffer *buffer) {
+    if(xbuffer->image) {
+        XDestroyImage(xbuffer->image); // also frees the inner data.
     }
     
-    buffer->image = XCreateImage(display, buffer->visual, buffer->depth, ZPixmap,
-                                 0, (char *)buffer->data, buffer->window_width,
-                                 buffer->window_height, 8, buffer->window_width*4);
+   xbuffer->image = XCreateImage(display, xbuffer->visual, xbuffer->depth, ZPixmap,
+                                 0, (char *)buffer->data, buffer->width,
+                                 buffer->height, 8, buffer->width*4);
     
-    XPutImage(display, window, gc, buffer->image, 0, 0, 0, 0, buffer->window_width, buffer->window_height);
+    XPutImage(display, window, gc, xbuffer->image, 0, 0, 0, 0, buffer->width, buffer->height);
 }
 
 void handleEvent(Display *display, Window window, GC gc, XEvent event,
-                 X_offscreen_buffer *buffer) {
+                 X_offscreen_buffer *xbuffer, Offscreen_buffer *buffer) {
     switch (event.type) {
         case KeyPress:
             printf("key pressed \n");
@@ -153,8 +139,8 @@ void handleEvent(Display *display, Window window, GC gc, XEvent event,
         case ConfigureNotify: {
             printf("structure changed\n");
             XUpdateBufferDims(display, window, buffer);
-            renderweirdgradient(buffer);
-            XDisplayBufferInWindow(display, window, gc, buffer);
+            gameUpdateAndRender(buffer);
+            XDisplayBufferInWindow(display, window, gc, xbuffer, buffer);
         } break;
         case Expose:
             printf("expose\n");
@@ -213,7 +199,8 @@ int XFillSoundBuffer(X_sound_config *sound_config) {
 
 int main() {
     X_sound_config sound_config = {};
-    X_offscreen_buffer buffer = {};
+    X_offscreen_buffer xbuffer = {};
+    Offscreen_buffer buffer = {};
     sound_config.sample_rate = 48000.0f;
     sound_config.amplitude = 10000.0f;
     sound_config.frequency = 440.0f;
@@ -228,11 +215,11 @@ int main() {
 
     printf("X server connected to the display\n");
     Window parent = DefaultRootWindow(display);
-    buffer.window_width = 500;
-    buffer.window_height = 500;
-    buffer.screen = DefaultScreen(display);
-    buffer.visual = DefaultVisual(display, buffer.screen);
-    buffer.depth = DefaultDepth(display, buffer.screen);
+    buffer.width = 500;
+    buffer.height = 500;
+    xbuffer.screen = DefaultScreen(display);
+    xbuffer.visual = DefaultVisual(display, xbuffer.screen);
+    xbuffer.depth = DefaultDepth(display, xbuffer.screen);
 
     /* Values */
     XSetWindowAttributes attrs = {};
@@ -243,8 +230,8 @@ int main() {
 
     unsigned long valuemask = CWEventMask;
     
-    Window window = XCreateWindow(display, parent, 0, 0, buffer.window_width,
-                                  buffer.window_height, 0, CopyFromParent,
+    Window window = XCreateWindow(display, parent, 0, 0, buffer.width,
+                                  buffer.height, 0, CopyFromParent,
                                   InputOutput, CopyFromParent, valuemask, &attrs);
     XMapWindow(display, window);
     XGCValues gc_values = {};
@@ -263,14 +250,14 @@ int main() {
         while (XPending(display)) {
             XEvent event;
             XNextEvent(display, &event);
-            handleEvent(display, window, gc, event, &buffer);
+            handleEvent(display, window, gc, event, &xbuffer, &buffer);
         }
       
         // for the animation.
         // TODO: return the error codes from these functions as well.
         XUpdateBufferDims(display, window, &buffer);
-        renderweirdgradient(&buffer);
-        XDisplayBufferInWindow(display, window, gc, &buffer);
+        gameUpdateAndRender(&buffer);
+        XDisplayBufferInWindow(display, window, gc, &xbuffer, &buffer);
         buffer.XOffset++;
         // err = XFillSoundBuffer(&sound_config);
         // if (err < 0) {
