@@ -27,8 +27,6 @@ typedef struct {
     int depth; 
 } X_offscreen_buffer;
 
-
-
 typedef struct {
     snd_pcm_t *pcm;
     real32 sample_rate; // we can't produce a continous wave, so we snapshot aka sample it.
@@ -94,28 +92,28 @@ int XInitSound(X_sound_config *sound_config) {
     return err;
 }
 
-void XUpdateBufferDims(Display *display, Window window, Offscreen_buffer *buffer) {
+void XUpdateBufferDims(Display *display, Window window, Game_offscreen_buffer *gameBuffer) {
     XWindowAttributes attrs = {};
     XGetWindowAttributes(display, window, &attrs);
-    buffer->width = attrs.width;
-    buffer->height = attrs.height;
+    gameBuffer->width = attrs.width;
+    gameBuffer->height = attrs.height;
 }
 
 void XDisplayBufferInWindow(Display *display, Window window, GC gc,
-                    X_offscreen_buffer *xbuffer, Offscreen_buffer *buffer) {
+                    X_offscreen_buffer *xbuffer, Game_offscreen_buffer *gameBuffer) {
     if(xbuffer->image) {
         XDestroyImage(xbuffer->image); // also frees the inner data.
     }
     
    xbuffer->image = XCreateImage(display, xbuffer->visual, xbuffer->depth, ZPixmap,
-                                 0, (char *)buffer->data, buffer->width,
-                                 buffer->height, 8, buffer->width*4);
+                                 0, (char *)gameBuffer->data, gameBuffer->width,
+                                 gameBuffer->height, 8, gameBuffer->width*4);
     
-    XPutImage(display, window, gc, xbuffer->image, 0, 0, 0, 0, buffer->width, buffer->height);
+    XPutImage(display, window, gc, xbuffer->image, 0, 0, 0, 0, gameBuffer->width, gameBuffer->height);
 }
 
 void handleEvent(Display *display, Window window, GC gc, XEvent event,
-                 X_offscreen_buffer *xbuffer, Offscreen_buffer *buffer) {
+                 X_offscreen_buffer *xbuffer, Game_offscreen_buffer *gameBuffer) {
     switch (event.type) {
         case KeyPress:
             printf("key pressed \n");
@@ -124,23 +122,23 @@ void handleEvent(Display *display, Window window, GC gc, XEvent event,
             printf("key released\n");
             KeySym sym = XLookupKeysym(&event.xkey, 0);
             if (sym == XK_w) {
-                buffer->YOffset++;
+                gameBuffer->YOffset++;
             }
             if (sym == XK_a) {
-                buffer->XOffset--;
+                gameBuffer->XOffset--;
             }
             if (sym == XK_s) {
-                buffer->YOffset--;
+                gameBuffer->YOffset--;
             }
             if (sym == XK_d) {
-                buffer->XOffset++;
+                gameBuffer->XOffset++;
             }
         } break;
         case ConfigureNotify: {
             printf("structure changed\n");
-            XUpdateBufferDims(display, window, buffer);
-            gameUpdateAndRender(buffer);
-            XDisplayBufferInWindow(display, window, gc, xbuffer, buffer);
+            XUpdateBufferDims(display, window, gameBuffer);
+            gameUpdateAndRender(gameBuffer);
+            XDisplayBufferInWindow(display, window, gc, xbuffer, gameBuffer);
         } break;
         case Expose:
             printf("expose\n");
@@ -200,7 +198,7 @@ int XFillSoundBuffer(X_sound_config *sound_config) {
 int main() {
     X_sound_config sound_config = {};
     X_offscreen_buffer xbuffer = {};
-    Offscreen_buffer buffer = {};
+    Game_offscreen_buffer gameBuffer = {};
     sound_config.sample_rate = 48000.0f;
     sound_config.amplitude = 10000.0f;
     sound_config.frequency = 440.0f;
@@ -215,8 +213,8 @@ int main() {
 
     printf("X server connected to the display\n");
     Window parent = DefaultRootWindow(display);
-    buffer.width = 500;
-    buffer.height = 500;
+    gameBuffer.width = 500;
+    gameBuffer.height = 500;
     xbuffer.screen = DefaultScreen(display);
     xbuffer.visual = DefaultVisual(display, xbuffer.screen);
     xbuffer.depth = DefaultDepth(display, xbuffer.screen);
@@ -230,8 +228,8 @@ int main() {
 
     unsigned long valuemask = CWEventMask;
     
-    Window window = XCreateWindow(display, parent, 0, 0, buffer.width,
-                                  buffer.height, 0, CopyFromParent,
+    Window window = XCreateWindow(display, parent, 0, 0, gameBuffer.width,
+                                  gameBuffer.height, 0, CopyFromParent,
                                   InputOutput, CopyFromParent, valuemask, &attrs);
     XMapWindow(display, window);
     XGCValues gc_values = {};
@@ -250,15 +248,15 @@ int main() {
         while (XPending(display)) {
             XEvent event;
             XNextEvent(display, &event);
-            handleEvent(display, window, gc, event, &xbuffer, &buffer);
+            handleEvent(display, window, gc, event, &xbuffer, &gameBuffer);
         }
       
         // for the animation.
         // TODO: return the error codes from these functions as well.
-        XUpdateBufferDims(display, window, &buffer);
-        gameUpdateAndRender(&buffer);
-        XDisplayBufferInWindow(display, window, gc, &xbuffer, &buffer);
-        buffer.XOffset++;
+        XUpdateBufferDims(display, window, &gameBuffer);
+        gameUpdateAndRender(&gameBuffer);
+        XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer);
+        gameBuffer.XOffset++;
         // err = XFillSoundBuffer(&sound_config);
         // if (err < 0) {
         //     printf("Sound error \n");
@@ -281,7 +279,7 @@ int main() {
         printf("Clock time elapsed in ms : %f\n", clockTimeElapsedMS);
         lastTimeClock = endTimeClock;
 
-        // buffer.YOffset++;
+        // gameBuffer.YOffset++;
     }
 
 }

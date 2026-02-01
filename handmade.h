@@ -10,9 +10,9 @@ typedef struct {
     int YOffset;
     int width;
     int height;
-} Offscreen_buffer;
+} Game_offscreen_buffer;
 
-void gameUpdateAndRender(Offscreen_buffer *buffer);
+void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer);
 
 /*
  Services the platform layer provides to the game play.
