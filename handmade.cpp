@@ -1,6 +1,6 @@
 #include "handmade.h"
 
-void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer) {
+void renderweirdgradient(Game_offscreen_buffer *gameBuffer) {
     gameBuffer->data = (uint32 *)malloc(gameBuffer->width*gameBuffer->height*4); // 4 bytes for a pixel RR GG BB XX
     uint32 *ptr = gameBuffer->data;
     for (int y = 0; y < gameBuffer->height; ++y) {
@@ -11,4 +11,8 @@ void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer) {
             *ptr++ = (green << 8) | blue;
         }
     }
+}
+
+void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer) {
+    renderweirdgradient(gameBuffer);
 }

@@ -170,7 +170,7 @@ int XFillSoundBuffer(X_sound_config *sound_config) {
         */
 
     int16 *sample_ptr = (int16 *)((uint8 *)areas[0].addr + (offset * areas[0].step / 8));
-      
+     
     for (uint32 i = 0; i < frames; i++) {
         int16 sample_value = (int16)(sound_config->amplitude * sinf(sound_config->phase));
         *sample_ptr++ = sample_value; // LEFT
