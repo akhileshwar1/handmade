@@ -29,11 +29,6 @@ typedef struct {
 
 typedef struct {
     snd_pcm_t *pcm;
-    real32 sample_rate; // we can't produce a continous wave, so we snapshot aka sample it.
-    real32 amplitude;
-    real32 frequency; // full cycles per second.
-    real32 phase;
-    real32 phase_increment;
 } X_sound_config;
 
 int XInitSound(X_sound_config *sound_config) {
@@ -79,7 +74,8 @@ int XInitSound(X_sound_config *sound_config) {
     }
     // 48 period size * 1000 (100ms period time) == 1 second worth of buffer.
     // period is the smallest unit of work read from sound buffer.
-    err = snd_pcm_hw_params_set_period_size(sound_config->pcm, hw_params, 48,0);
+    snd_pcm_uframes_t period_size = 512;
+    err = snd_pcm_hw_params_set_period_size_near(sound_config->pcm, hw_params, &period_size, &dir);
     if (err < 0) {
         printf("failed at %s\n", snd_strerror(err));
     }
@@ -113,7 +109,8 @@ void XDisplayBufferInWindow(Display *display, Window window, GC gc,
 }
 
 void handleEvent(Display *display, Window window, GC gc, XEvent event,
-                 X_offscreen_buffer *xbuffer, Game_offscreen_buffer *gameBuffer) {
+                 X_offscreen_buffer *xbuffer, Game_offscreen_buffer *gameBuffer,
+                 Game_sound_buffer *gameSoundBuffer) {
     switch (event.type) {
         case KeyPress:
             printf("key pressed \n");
@@ -137,7 +134,7 @@ void handleEvent(Display *display, Window window, GC gc, XEvent event,
         case ConfigureNotify: {
             printf("structure changed\n");
             XUpdateBufferDims(display, window, gameBuffer);
-            gameUpdateAndRender(gameBuffer);
+            gameUpdateAndRender(gameBuffer, gameSoundBuffer);
             XDisplayBufferInWindow(display, window, gc, xbuffer, gameBuffer);
         } break;
         case Expose:
@@ -148,17 +145,11 @@ void handleEvent(Display *display, Window window, GC gc, XEvent event,
     }
 }
 
-int XFillSoundBuffer(X_sound_config *sound_config) {
-    snd_pcm_sframes_t available = snd_pcm_avail_update(sound_config->pcm); 
-    if (available < 0) {
-        printf ("availability error %s\n", snd_strerror(available));
-        snd_pcm_recover(sound_config->pcm, available, 0);
-        available = snd_pcm_avail_update(sound_config->pcm);
-    }
+int XFillSoundBuffer(X_sound_config *sound_config,
+                     Game_sound_buffer *gameSoundBuffer) {
     snd_pcm_uframes_t offset;
     snd_pcm_uframes_t frames;
     const snd_pcm_channel_area_t *areas;
-    frames = available;
     int can_write = snd_pcm_mmap_begin(sound_config->pcm, &areas, &offset, &frames);
     if (can_write < 0) {
         printf("can't write %s\n", snd_strerror(can_write));
@@ -169,19 +160,13 @@ int XFillSoundBuffer(X_sound_config *sound_config) {
          and they mean left and right speaker, 2 samples per frame.
         */
 
-    int16 *sample_ptr = (int16 *)((uint8 *)areas[0].addr + (offset * areas[0].step / 8));
-     
-    for (uint32 i = 0; i < frames; i++) {
-        int16 sample_value = (int16)(sound_config->amplitude * sinf(sound_config->phase));
-        *sample_ptr++ = sample_value; // LEFT
-        *sample_ptr++ = sample_value; // RIGHT
-
-        sound_config->phase += sound_config->phase_increment;
-
-        if (sound_config->phase >= 2.0f * M_PI) {
-            sound_config->phase -= 2.0f * M_PI;
-        }
-
+    int16 *ring_ptr= (int16 *)((uint8 *)areas[0].addr + (offset * areas[0].step / 8));
+    int16 *sample_ptr = gameSoundBuffer->samples; 
+    // copy from the samples array on the game's sound buffer to the actual ring buffer.
+    for (uint32 i = 0; i < gameSoundBuffer->frames; i++) {
+        int16 sample_value = gameSoundBuffer->samples[i];
+        *ring_ptr++ = *sample_ptr++; // LEFT
+        *ring_ptr++ = *sample_ptr++; // RIGHT
     }
     snd_pcm_mmap_commit(sound_config->pcm, offset, frames);
     snd_pcm_state_t state = snd_pcm_state(sound_config->pcm);   
@@ -197,13 +182,15 @@ int XFillSoundBuffer(X_sound_config *sound_config) {
 
 int main() {
     X_sound_config sound_config = {};
+    Game_sound_buffer gameSoundBuffer = {};
     X_offscreen_buffer xbuffer = {};
     Game_offscreen_buffer gameBuffer = {};
-    sound_config.sample_rate = 48000.0f;
-    sound_config.amplitude = 10000.0f;
-    sound_config.frequency = 440.0f;
-    sound_config.phase = 0.0f;
-    sound_config.phase_increment = (2.0f * M_PI * sound_config.frequency) / sound_config.sample_rate;
+    gameSoundBuffer.sample_rate = 48000;
+    gameSoundBuffer.amplitude = 10000.0f;
+    gameSoundBuffer.frequency = 440.0f;
+    gameSoundBuffer.phase = 0.0f;
+    gameSoundBuffer.phase_increment = (2.0f * M_PI * gameSoundBuffer.frequency) / gameSoundBuffer.sample_rate;
+    gameSoundBuffer.samples = (int16 *)malloc(48000 * 2 * 16);
 
     Display *display = XOpenDisplay(NULL);
     if (!display) {
@@ -240,7 +227,7 @@ int main() {
     XGrabKeyboard(display, window, False, GrabModeAsync, GrabModeAsync, CurrentTime);
     XAutoRepeatOn(display); 
 
-    // int err = XInitSound(&sound_config); 
+    int err = XInitSound(&sound_config); 
     timespec lastTime;
     clock_gettime(CLOCK_MONOTONIC_RAW, &lastTime);
     unsigned long long lastTimeClock = __rdtsc();
@@ -248,20 +235,27 @@ int main() {
         while (XPending(display)) {
             XEvent event;
             XNextEvent(display, &event);
-            handleEvent(display, window, gc, event, &xbuffer, &gameBuffer);
+            handleEvent(display, window, gc, event, &xbuffer, &gameBuffer, &gameSoundBuffer);
         }
       
         // for the animation.
         // TODO: return the error codes from these functions as well.
         XUpdateBufferDims(display, window, &gameBuffer);
-        gameUpdateAndRender(&gameBuffer);
+        snd_pcm_sframes_t available = snd_pcm_avail_update(sound_config.pcm); 
+        if (available < 0) {
+            printf ("availability error %s\n", snd_strerror(available));
+            snd_pcm_recover(sound_config.pcm, available, 0);
+            available = snd_pcm_avail_update(sound_config.pcm);
+        }
+        gameSoundBuffer.frames = available;
+        gameUpdateAndRender(&gameBuffer, &gameSoundBuffer);
         XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer);
         gameBuffer.XOffset++;
-        // err = XFillSoundBuffer(&sound_config);
-        // if (err < 0) {
-        //     printf("Sound error \n");
-        //     return err;
-        // }
+        int err = XFillSoundBuffer(&sound_config, &gameSoundBuffer);
+        if (err < 0) {
+            printf("Sound error \n");
+            return err;
+        }
 
         timespec endTime;
         clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);

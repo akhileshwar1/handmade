@@ -12,7 +12,18 @@ typedef struct {
     int height;
 } Game_offscreen_buffer;
 
-void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer);
+typedef struct {
+    uint32 sample_rate; // we can't produce a continous wave, so we snapshot aka sample it.
+    uint32 frames;
+    int16 *samples;
+    real32 amplitude;
+    real32 frequency; // full cycles per second.
+    real32 phase;
+    real32 phase_increment;
+} Game_sound_buffer;
+
+
+void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer, Game_sound_buffer *gameSoundBuffer);
 
 /*
  Services the platform layer provides to the game play.

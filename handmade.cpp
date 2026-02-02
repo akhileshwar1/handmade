@@ -13,6 +13,25 @@ void renderweirdgradient(Game_offscreen_buffer *gameBuffer) {
     }
 }
 
-void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer) {
+void writeSound(Game_sound_buffer *gameSoundBuffer) {
+    int16 *sample_ptr = gameSoundBuffer->samples;
+    for (uint32 i = 0; i < gameSoundBuffer->frames; i++) {
+        int16 sample_value = (int16)(gameSoundBuffer->amplitude * sinf(gameSoundBuffer->phase));
+        *sample_ptr++ = sample_value; // left
+        *sample_ptr++ = sample_value; // right
+
+        gameSoundBuffer->phase += gameSoundBuffer->phase_increment;
+
+        if (gameSoundBuffer->phase >= 2.0f * M_PI) {
+            gameSoundBuffer->phase -= 2.0f * M_PI;
+        }
+
+    }
+
+}
+
+void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer,
+                         Game_sound_buffer *gameSoundBuffer) {
     renderweirdgradient(gameBuffer);
+    writeSound(gameSoundBuffer);
 }
