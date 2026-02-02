@@ -22,8 +22,15 @@ typedef struct {
     real32 phase_increment;
 } Game_sound_buffer;
 
+typedef struct {
+    bool wWasPressed;
+    bool aWasPressed;
+    bool sWasPressed;
+    bool dWasPressed;
+} Game_input;
 
-void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer, Game_sound_buffer *gameSoundBuffer);
+void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer, Game_sound_buffer *gameSoundBuffer,
+                         Game_input *gameInput);
 
 /*
  Services the platform layer provides to the game play.
