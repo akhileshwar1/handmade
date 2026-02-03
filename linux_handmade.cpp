@@ -9,6 +9,10 @@
 #include <time.h>
 #include <x86intrin.h>
 
+#define kilobytes(value) (value*1024)
+#define megabytes(value) (kilobytes(value*1024))
+#define gigabytes(value) (megabytes(value*1024))
+
 typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
@@ -180,7 +184,6 @@ int main() {
     Game_sound_buffer gameSoundBuffer = {};
     X_offscreen_buffer xbuffer = {};
     Game_offscreen_buffer gameBuffer = {};
-    Game_state state = {};
     gameSoundBuffer.sample_rate = 48000;
     gameSoundBuffer.amplitude = 10000.0f;
     gameSoundBuffer.frequency = 440.0f;
@@ -227,6 +230,12 @@ int main() {
     timespec lastTime;
     clock_gettime(CLOCK_MONOTONIC_RAW, &lastTime);
     unsigned long long lastTimeClock = __rdtsc();
+    Game_memory memory = {};
+    uint64 size = megabytes(256);
+    memory.permanentStorage = malloc(megabytes(256));
+    memory.transientStorage = malloc(megabytes(256));
+    memory.permanentStorageSize = 256;
+    memory.transientStorageSize = 256;
 
     Game_input input = {};
     while (Running) {
@@ -246,7 +255,7 @@ int main() {
         //     available = snd_pcm_avail_update(sound_config.pcm);
         // }
         // gameSoundBuffer.frames = available;
-        gameUpdateAndRender(&gameBuffer, &gameSoundBuffer, &state, &input);
+        gameUpdateAndRender(&gameBuffer, &gameSoundBuffer, &input, &memory);
         XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer);
         // int err = XFillSoundBuffer(&sound_config, &gameSoundBuffer);
         // if (err < 0) {

@@ -16,6 +16,13 @@ typedef struct {
 } Game_state;
 
 typedef struct {
+    uint64 permanentStorageSize;
+    void *permanentStorage;
+    uint64 transientStorageSize;
+    void *transientStorage;
+} Game_memory;
+
+typedef struct {
     uint32 sample_rate; // we can't produce a continous wave, so we snapshot aka sample it.
     uint32 frames;
     int16 *samples;

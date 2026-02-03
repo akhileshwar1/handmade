@@ -32,8 +32,9 @@ void writeSound(Game_sound_buffer *gameSoundBuffer) {
 
 void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer,
                          Game_sound_buffer *gameSoundBuffer,
-                         Game_state *state,
-                         Game_input *input) {
+                         Game_input *input,
+                         Game_memory *memory) {
+    Game_state *state = (Game_state *)memory->permanentStorage;
     if (input->wWasPressed) {
        state->YOffset++;
     } else if (input->aWasPressed) {
