@@ -42,6 +42,7 @@ void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer,
     } else if (input->dWasPressed) {
         gameBuffer->XOffset++;
     }
+    gameBuffer->XOffset++;
     renderweirdgradient(gameBuffer);
     writeSound(gameSoundBuffer);
 }

@@ -247,7 +247,6 @@ int main() {
         // gameSoundBuffer.frames = available;
         gameUpdateAndRender(&gameBuffer, &gameSoundBuffer, &input);
         XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer);
-        gameBuffer.XOffset++;
         // int err = XFillSoundBuffer(&sound_config, &gameSoundBuffer);
         // if (err < 0) {
         //     printf("Sound error \n");

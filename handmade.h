@@ -7,7 +7,7 @@
 typedef struct {
     uint32 *data;
     int XOffset;
-    int YOffset;
+    int YOffset; 
     int width;
     int height;
 } Game_offscreen_buffer;
