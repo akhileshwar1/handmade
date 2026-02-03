@@ -108,9 +108,8 @@ void XDisplayBufferInWindow(Display *display, Window window, GC gc,
     XPutImage(display, window, gc, xbuffer->image, 0, 0, 0, 0, gameBuffer->width, gameBuffer->height);
 }
 
-void handleEvent(Display *display, Window window, GC gc, XEvent event,
-                 X_offscreen_buffer *xbuffer, Game_offscreen_buffer *gameBuffer,
-                 Game_sound_buffer *gameSoundBuffer,Game_input *input) {
+void handleEvent(XEvent event,
+                 Game_input *input) {
     switch (event.type) {
         case KeyPress:
             printf("key pressed \n");
@@ -133,9 +132,6 @@ void handleEvent(Display *display, Window window, GC gc, XEvent event,
         } break;
         case ConfigureNotify: {
             printf("structure changed\n");
-            XUpdateBufferDims(display, window, gameBuffer);
-            gameUpdateAndRender(gameBuffer, gameSoundBuffer, input);
-            XDisplayBufferInWindow(display, window, gc, xbuffer, gameBuffer);
         } break;
         case Expose:
             printf("expose\n");
@@ -164,7 +160,6 @@ int XFillSoundBuffer(X_sound_config *sound_config,
     int16 *sample_ptr = gameSoundBuffer->samples; 
     // copy from the samples array on the game's sound buffer to the actual ring buffer.
     for (uint32 i = 0; i < gameSoundBuffer->frames; i++) {
-        int16 sample_value = gameSoundBuffer->samples[i];
         *ring_ptr++ = *sample_ptr++; // LEFT
         *ring_ptr++ = *sample_ptr++; // RIGHT
     }
@@ -185,7 +180,6 @@ int main() {
     Game_sound_buffer gameSoundBuffer = {};
     X_offscreen_buffer xbuffer = {};
     Game_offscreen_buffer gameBuffer = {};
-    Game_input input = {};
     gameSoundBuffer.sample_rate = 48000;
     gameSoundBuffer.amplitude = 10000.0f;
     gameSoundBuffer.frequency = 440.0f;
@@ -233,13 +227,12 @@ int main() {
     clock_gettime(CLOCK_MONOTONIC_RAW, &lastTime);
     unsigned long long lastTimeClock = __rdtsc();
 
+    Game_input input = {};
     while (Running) {
         while (XPending(display)) {
             XEvent event;
             XNextEvent(display, &event);
-            handleEvent(display, window, gc,
-                        event, &xbuffer, &gameBuffer,
-                        &gameSoundBuffer,&input);
+            handleEvent(event, &input);
         }
       
         // for the animation.
@@ -278,6 +271,8 @@ int main() {
         lastTimeClock = endTimeClock;
 
         // gameBuffer.YOffset++;
+        // swap old input with the new one to reset the values.
+        input = {}; 
     }
 
 }
