@@ -32,14 +32,14 @@ void writeSound(Game_sound_buffer *gameSoundBuffer) {
 
 void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer,
                          Game_sound_buffer *gameSoundBuffer,
-                         Game_input *gameInput) {
-    if (gameInput->wWasPressed) {
+                         Game_input *input) {
+    if (input->wWasPressed) {
         gameBuffer->YOffset++;
-    } else if (gameInput->aWasPressed) {
+    } else if (input->aWasPressed) {
         gameBuffer->XOffset--;
-    } else if (gameInput->sWasPressed) {
+    } else if (input->sWasPressed) {
         gameBuffer->YOffset--;
-    } else if (gameInput->dWasPressed) {
+    } else if (input->dWasPressed) {
         gameBuffer->XOffset++;
     }
     renderweirdgradient(gameBuffer);

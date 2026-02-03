@@ -30,7 +30,7 @@ typedef struct {
 } Game_input;
 
 void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer, Game_sound_buffer *gameSoundBuffer,
-                         Game_input *gameInput);
+                         Game_input *input);
 
 /*
  Services the platform layer provides to the game play.

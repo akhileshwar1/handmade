@@ -110,7 +110,7 @@ void XDisplayBufferInWindow(Display *display, Window window, GC gc,
 
 void handleEvent(Display *display, Window window, GC gc, XEvent event,
                  X_offscreen_buffer *xbuffer, Game_offscreen_buffer *gameBuffer,
-                 Game_sound_buffer *gameSoundBuffer,Game_input *gameInput) {
+                 Game_sound_buffer *gameSoundBuffer,Game_input *input) {
     switch (event.type) {
         case KeyPress:
             printf("key pressed \n");
@@ -119,23 +119,22 @@ void handleEvent(Display *display, Window window, GC gc, XEvent event,
             printf("key released\n");
             KeySym sym = XLookupKeysym(&event.xkey, 0);
             if (sym == XK_w) {
-                gameInput->wWasPressed = true;
+                input->wWasPressed = true;
             }
             if (sym == XK_a) {
-                gameInput->aWasPressed = true;
+                input->aWasPressed = true;
             }
             if (sym == XK_s) {
-                gameInput->sWasPressed = true;
+                input->sWasPressed = true;
             }
             if (sym == XK_d) {
-                gameInput->dWasPressed = true;
+                input->dWasPressed = true;
             }
         } break;
         case ConfigureNotify: {
             printf("structure changed\n");
             XUpdateBufferDims(display, window, gameBuffer);
-            gameUpdateAndRender(gameBuffer, gameSoundBuffer, gameInput);
-            *gameInput = {}; // Reset the gameInput because we send transitions here.
+            gameUpdateAndRender(gameBuffer, gameSoundBuffer, input);
             XDisplayBufferInWindow(display, window, gc, xbuffer, gameBuffer);
         } break;
         case Expose:
@@ -186,7 +185,7 @@ int main() {
     Game_sound_buffer gameSoundBuffer = {};
     X_offscreen_buffer xbuffer = {};
     Game_offscreen_buffer gameBuffer = {};
-    Game_input gameInput = {};
+    Game_input input = {};
     gameSoundBuffer.sample_rate = 48000;
     gameSoundBuffer.amplitude = 10000.0f;
     gameSoundBuffer.frequency = 440.0f;
@@ -233,13 +232,14 @@ int main() {
     timespec lastTime;
     clock_gettime(CLOCK_MONOTONIC_RAW, &lastTime);
     unsigned long long lastTimeClock = __rdtsc();
+
     while (Running) {
         while (XPending(display)) {
             XEvent event;
             XNextEvent(display, &event);
             handleEvent(display, window, gc,
                         event, &xbuffer, &gameBuffer,
-                        &gameSoundBuffer,&gameInput);
+                        &gameSoundBuffer,&input);
         }
       
         // for the animation.
@@ -252,8 +252,7 @@ int main() {
         //     available = snd_pcm_avail_update(sound_config.pcm);
         // }
         // gameSoundBuffer.frames = available;
-        gameUpdateAndRender(&gameBuffer, &gameSoundBuffer, &gameInput);
-        gameInput = {}; // Reset the gameInput because we send transitions here.
+        gameUpdateAndRender(&gameBuffer, &gameSoundBuffer, &input);
         XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer);
         gameBuffer.XOffset++;
         // int err = XFillSoundBuffer(&sound_config, &gameSoundBuffer);
