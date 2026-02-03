@@ -6,11 +6,14 @@
 */
 typedef struct {
     uint32 *data;
-    int XOffset;
-    int YOffset; 
     int width;
     int height;
 } Game_offscreen_buffer;
+
+typedef struct {
+    int XOffset;
+    int YOffset; 
+} Game_state;
 
 typedef struct {
     uint32 sample_rate; // we can't produce a continous wave, so we snapshot aka sample it.

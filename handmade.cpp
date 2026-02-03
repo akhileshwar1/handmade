@@ -1,13 +1,13 @@
 #include "handmade.h"
 
-void renderweirdgradient(Game_offscreen_buffer *gameBuffer) {
+void renderweirdgradient(Game_offscreen_buffer *gameBuffer, Game_state *state) {
     gameBuffer->data = (uint32 *)malloc(gameBuffer->width*gameBuffer->height*4); // 4 bytes for a pixel RR GG BB XX
     uint32 *ptr = gameBuffer->data;
     for (int y = 0; y < gameBuffer->height; ++y) {
 
         for (int x = 0; x < gameBuffer->width; ++x) {
-            uint8 blue = (uint8)(x + gameBuffer->XOffset);
-            uint8 green = (uint8)(y + gameBuffer->YOffset);
+            uint8 blue = (uint8)(x + state->XOffset);
+            uint8 green = (uint8)(y + state->YOffset);
             *ptr++ = (green << 8) | blue;
         }
     }
@@ -32,17 +32,18 @@ void writeSound(Game_sound_buffer *gameSoundBuffer) {
 
 void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer,
                          Game_sound_buffer *gameSoundBuffer,
+                         Game_state *state,
                          Game_input *input) {
     if (input->wWasPressed) {
-        gameBuffer->YOffset++;
+       state->YOffset++;
     } else if (input->aWasPressed) {
-        gameBuffer->XOffset--;
+        state->XOffset--;
     } else if (input->sWasPressed) {
-        gameBuffer->YOffset--;
+        state->YOffset--;
     } else if (input->dWasPressed) {
-        gameBuffer->XOffset++;
+        state->XOffset++;
     }
-    gameBuffer->XOffset++;
-    renderweirdgradient(gameBuffer);
+    state->XOffset++;
+    renderweirdgradient(gameBuffer, state);
     writeSound(gameSoundBuffer);
 }

@@ -180,6 +180,7 @@ int main() {
     Game_sound_buffer gameSoundBuffer = {};
     X_offscreen_buffer xbuffer = {};
     Game_offscreen_buffer gameBuffer = {};
+    Game_state state = {};
     gameSoundBuffer.sample_rate = 48000;
     gameSoundBuffer.amplitude = 10000.0f;
     gameSoundBuffer.frequency = 440.0f;
@@ -245,7 +246,7 @@ int main() {
         //     available = snd_pcm_avail_update(sound_config.pcm);
         // }
         // gameSoundBuffer.frames = available;
-        gameUpdateAndRender(&gameBuffer, &gameSoundBuffer, &input);
+        gameUpdateAndRender(&gameBuffer, &gameSoundBuffer, &state, &input);
         XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer);
         // int err = XFillSoundBuffer(&sound_config, &gameSoundBuffer);
         // if (err < 0) {
