@@ -1,6 +1,16 @@
 #ifndef HANDMADE_H
 #define HANDMADE_H
 
+#define kilobytes(value) (value*1024LL)
+#define megabytes(value) (kilobytes(value*1024LL))
+#define gigabytes(value) (megabytes(value*1024LL))
+
+#if HANDMADE_SLOW
+  #define Assert(Expression) if(!(Expression)) {*(int *)0 = 0}
+#else
+  #define Assert(Expression)
+#endif
+
 /*
  Services that the game provides to the platform layer.
 */

@@ -9,10 +9,6 @@
 #include <time.h>
 #include <x86intrin.h>
 
-#define kilobytes(value) (value*1024)
-#define megabytes(value) (kilobytes(value*1024))
-#define gigabytes(value) (megabytes(value*1024))
-
 typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
