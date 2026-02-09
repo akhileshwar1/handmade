@@ -6,7 +6,7 @@
 #define gigabytes(value) (megabytes(value*1024LL))
 
 #if HANDMADE_SLOW
-  #define Assert(Expression) if(!(Expression)) {*(int *)0 = 0}
+  #define Assert(Expression) if(!(Expression)) {*(int *)0 = 0;}
 #else
   #define Assert(Expression)
 #endif
@@ -55,4 +55,10 @@ void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer, Game_sound_buffer *g
 /*
  Services the platform layer provides to the game play.
 */
+#if HANDMADE_INTERNAL
+  void *DEBUGPlatformReadEntireFile(char *filename);
+  void DEBUGPlatoformFreeFileMemory(void *BitmapMemory);
+  void DEBUGPlatformWriteEntireFile(char  *filename, uint32 memorySize, void *BitmapMemory);
+#endif
+
 #endif
