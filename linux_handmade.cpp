@@ -174,6 +174,13 @@ int XFillSoundBuffer(X_sound_config *sound_config,
     return 0;
 }
 
+real64 XtimeElapsedMS (timespec lastTime, timespec endTime) {
+    real64 timeElapsedSeconds = endTime.tv_sec - lastTime.tv_sec;
+    real64 timeElapsedNanoSeconds = endTime.tv_nsec - lastTime.tv_nsec;
+    real64 timeElapsedMS = (timeElapsedSeconds * 1000.0f)  + (timeElapsedNanoSeconds / (1000.0f * 1000.0f));
+    return timeElapsedMS;
+}
+
 
 int main() {
     X_sound_config sound_config = {};
@@ -224,7 +231,7 @@ int main() {
 
     // int err = XInitSound(&sound_config); 
     timespec lastTime;
-    clock_gettime(CLOCK_MONOTONIC_RAW, &lastTime);
+    timespec endTime;
     unsigned long long lastTimeClock = __rdtsc();
     Game_memory memory = {};
     uint64 size = megabytes(256);
@@ -233,7 +240,12 @@ int main() {
     memory.permanentStorageSize = 256;
     memory.transientStorageSize = 256;
 
+    real32 MonitorRefreshHz = 120.0f;
+    real32 GameUpdateHz = (MonitorRefreshHz/ 2.0f); // physics time.
+    real32 TargetMSPerFrame = (1000.0f / GameUpdateHz);
+
     Game_input input = {};
+    clock_gettime(CLOCK_MONOTONIC_RAW, &lastTime);
     while (Running) {
         while (XPending(display)) {
             XEvent event;
@@ -244,6 +256,7 @@ int main() {
         // for the animation.
         // TODO: return the error codes from these functions as well.
         XUpdateBufferDims(display, window, &gameBuffer);
+        gameUpdateAndRender(&gameBuffer, &gameSoundBuffer, &input, &memory);
         // snd_pcm_sframes_t available = snd_pcm_avail_update(sound_config.pcm); 
         // if (available < 0) {
         //     printf ("availability error %s\n", snd_strerror(available));
@@ -251,33 +264,46 @@ int main() {
         //     available = snd_pcm_avail_update(sound_config.pcm);
         // }
         // gameSoundBuffer.frames = available;
-        gameUpdateAndRender(&gameBuffer, &gameSoundBuffer, &input, &memory);
-        XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer);
         // int err = XFillSoundBuffer(&sound_config, &gameSoundBuffer);
         // if (err < 0) {
         //     printf("Sound error \n");
         //     return err;
         // }
 
-        timespec endTime;
         clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
+        real64 worktimeElapsedMS = XtimeElapsedMS(lastTime, endTime);
+        real64 fps = 1000.0f / worktimeElapsedMS;
+        printf("time taken : physics time %f, %f\n", worktimeElapsedMS, TargetMSPerFrame);
+        if (worktimeElapsedMS < TargetMSPerFrame) {
+            printf("Less time taken!\n");
+            while (worktimeElapsedMS < TargetMSPerFrame) {
+                // pass time till the target.
+                sleep((TargetMSPerFrame - worktimeElapsedMS) / 1000.0f);
+                clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
+                worktimeElapsedMS = XtimeElapsedMS(lastTime, endTime);
+            }
+        } else {
+            printf("More time taken!\n");
+            // NOTE: what to do? log perhaps.
+        }
+      
+        XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer);
+        // physics time has passed, rendering time on.
+        // physics time + rendering time <= monitor frame rate.
+        // printf("time elapsed in ms: %f\n", worktimeElapsedMS);
+        // printf("FPS: %f\n", fps);
 
-        real64 timeElapsed = endTime.tv_nsec - lastTime.tv_nsec;
-        real64 timeElapsedMS = timeElapsed / (1000.0f * 1000.0f); 
-        real64 fps = 1000.0f / timeElapsedMS;
-        printf("time elapsed in ms: %f\n", timeElapsedMS);
-        printf("FPS: %f\n", fps);
-        lastTime = endTime;
-
-        unsigned long long endTimeClock = __rdtsc();
-        real64 clockElapsed = endTimeClock - lastTimeClock; // in 10^13 order. 
-        real64 clockTimeElapsedMS = (1000.0f * 10000.0f) / clockElapsed;
-        printf("Clock time elapsed in ms : %f\n", clockTimeElapsedMS);
-        lastTimeClock = endTimeClock;
+        // unsigned long long endTimeClock = __rdtsc();
+        // real64 clockElapsed = endTimeClock - lastTimeClock; // in 10^13 order. 
+        // real64 clockTimeElapsedMS = (1000.0f * 10000.0f) / clockElapsed;
+        // printf("Clock time elapsed in ms : %f\n", clockTimeElapsedMS);
+        // lastTimeClock = endTimeClock;
 
         // gameBuffer.YOffset++;
         // swap old input with the new one to reset the values.
         input = {}; 
+        clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
+        lastTime = endTime;
     }
 
 }
