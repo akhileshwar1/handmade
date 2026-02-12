@@ -34,7 +34,7 @@ typedef struct {
 
 typedef struct {
     uint32 sample_rate; // we can't produce a continous wave, so we snapshot aka sample it.
-    uint32 frames;
+    uint32 framesToWrite;
     int16 *samples;
     real32 amplitude;
     real32 frequency; // full cycles per second.

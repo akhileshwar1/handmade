@@ -108,6 +108,7 @@ void XDisplayBufferInWindow(Display *display, Window window, GC gc,
     XPutImage(display, window, gc, xbuffer->image, 0, 0, 0, 0, gameBuffer->width, gameBuffer->height);
 }
 
+
 void handleEvent(XEvent event,
                  Game_input *input) {
     switch (event.type) {
@@ -144,9 +145,9 @@ void handleEvent(XEvent event,
 int XFillSoundBuffer(X_sound_config *sound_config,
                      Game_sound_buffer *gameSoundBuffer) {
     snd_pcm_uframes_t offset;
-    snd_pcm_uframes_t frames;
+    snd_pcm_uframes_t framesToWrite = gameSoundBuffer->framesToWrite;
     const snd_pcm_channel_area_t *areas;
-    int can_write = snd_pcm_mmap_begin(sound_config->pcm, &areas, &offset, &frames);
+    int can_write = snd_pcm_mmap_begin(sound_config->pcm, &areas, &offset, &framesToWrite);
     if (can_write < 0) {
         printf("can't write %s\n", snd_strerror(can_write));
         return -1;
@@ -159,11 +160,14 @@ int XFillSoundBuffer(X_sound_config *sound_config,
     int16 *ring_ptr= (int16 *)((uint8 *)areas[0].addr + (offset * areas[0].step / 8));
     int16 *sample_ptr = gameSoundBuffer->samples; 
     // copy from the samples array on the game's sound buffer to the actual ring buffer.
-    for (uint32 i = 0; i < gameSoundBuffer->frames; i++) {
+    for (uint32 i = 0; i < framesToWrite; i++) {
         *ring_ptr++ = *sample_ptr++; // LEFT
         *ring_ptr++ = *sample_ptr++; // RIGHT
     }
-    snd_pcm_mmap_commit(sound_config->pcm, offset, frames);
+    snd_pcm_sframes_t framesWritten = snd_pcm_mmap_commit(sound_config->pcm, offset, framesToWrite);
+    if (framesWritten <= 0) {
+        return framesWritten;
+    }
     snd_pcm_state_t state = snd_pcm_state(sound_config->pcm);   
     if (state == SND_PCM_STATE_PREPARED) {
         int err = snd_pcm_start(sound_config->pcm);
@@ -180,7 +184,6 @@ real64 XtimeElapsedMS (timespec lastTime, timespec endTime) {
     real64 timeElapsedMS = (timeElapsedSeconds * 1000.0f)  + (timeElapsedNanoSeconds / (1000.0f * 1000.0f));
     return timeElapsedMS;
 }
-
 
 int main() {
     X_sound_config sound_config = {};
@@ -229,7 +232,7 @@ int main() {
     XGrabKeyboard(display, window, False, GrabModeAsync, GrabModeAsync, CurrentTime);
     XAutoRepeatOn(display); 
 
-    // int err = XInitSound(&sound_config); 
+    int err = XInitSound(&sound_config); 
     timespec lastTime;
     timespec endTime;
     unsigned long long lastTimeClock = __rdtsc();
@@ -256,20 +259,16 @@ int main() {
         // for the animation.
         // TODO: return the error codes from these functions as well.
         XUpdateBufferDims(display, window, &gameBuffer);
+        snd_pcm_sframes_t available = snd_pcm_avail_update(sound_config.pcm); 
+        if (available < 0) {
+            printf ("availability error %s\n", snd_strerror(available));
+            snd_pcm_recover(sound_config.pcm, available, 0);
+            available = snd_pcm_avail_update(sound_config.pcm);
+        }
+        gameSoundBuffer.framesToWrite = (available/60); // we only write the next "game" frame's worth of audio.
         gameUpdateAndRender(&gameBuffer, &gameSoundBuffer, &input, &memory);
-        // snd_pcm_sframes_t available = snd_pcm_avail_update(sound_config.pcm); 
-        // if (available < 0) {
-        //     printf ("availability error %s\n", snd_strerror(available));
-        //     snd_pcm_recover(sound_config.pcm, available, 0);
-        //     available = snd_pcm_avail_update(sound_config.pcm);
-        // }
-        // gameSoundBuffer.frames = available;
-        // int err = XFillSoundBuffer(&sound_config, &gameSoundBuffer);
-        // if (err < 0) {
-        //     printf("Sound error \n");
-        //     return err;
-        // }
 
+        
         clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
         real64 worktimeElapsedMS = XtimeElapsedMS(lastTime, endTime);
         real64 fps = 1000.0f / worktimeElapsedMS;
@@ -287,6 +286,11 @@ int main() {
             // NOTE: what to do? log perhaps.
         }
       
+        int err = XFillSoundBuffer(&sound_config, &gameSoundBuffer);
+        if (err < 0) {
+            printf("Sound error \n");
+            return err;
+        }
         XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer);
         // physics time has passed, rendering time on.
         // physics time + rendering time <= monitor frame rate.
@@ -301,7 +305,7 @@ int main() {
 
         // gameBuffer.YOffset++;
         // swap old input with the new one to reset the values.
-        input = {}; 
+        input = {};
         clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
         lastTime = endTime;
     }

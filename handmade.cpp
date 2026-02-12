@@ -18,8 +18,9 @@ void renderweirdgradient(Game_offscreen_buffer *gameBuffer, Game_state *state) {
 
 void writeSound(Game_sound_buffer *gameSoundBuffer) {
     int16 *sample_ptr = gameSoundBuffer->samples;
-    for (uint32 i = 0; i < gameSoundBuffer->frames; i++) {
-        int16 sample_value = (int16)(gameSoundBuffer->amplitude * sinf(gameSoundBuffer->phase));
+    for (uint32 i = 0; i < gameSoundBuffer->framesToWrite; i++) {
+        int16 sample_value = (int16)(gameSoundBuffer->amplitude *
+                                     sinf(gameSoundBuffer->phase));
         *sample_ptr++ = sample_value; // left
         *sample_ptr++ = sample_value; // right
 
