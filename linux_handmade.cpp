@@ -20,6 +20,12 @@ typedef struct timespec timespec;
 
 #include "handmade.cpp"
 
+// we only write the next "game" frame's worth of audio
+// i.e 1/60 th of a second which is the period size
+// 48000 * 2 * 2 (bytes/sec) / 4800 * 2 * 2 * 6 (bytes/interrupt)
+// is the interrupt time for the card i.e 1/60th 
+// period size determines the interrupt time.
+#define PERIOD_SIZE (4800 * 6)
 typedef struct {
     XImage *image;
     int screen; 
@@ -29,14 +35,22 @@ typedef struct {
 
 typedef struct {
     snd_pcm_t *pcm;
+    snd_output_t *output;
+    snd_pcm_status_t *status;
 } X_sound_config;
 
 int XInitSound(X_sound_config *sound_config) {
     snd_pcm_state_t state;
+    sound_config->output = NULL;
+    sound_config->status = {};
+    int err;
+    err = snd_output_stdio_attach(&sound_config->output, stdout, 0);
+    if (err < 0) {
+        printf("Output failed: %s\n", snd_strerror(err));
+        return 0;
+    }
     int dir = 0; // basically chose a value almost equal to what was passed.
     int channels = 2;
-    static unsigned int period_time = 100000;       /* period time in us */
-    int err;
     err = snd_pcm_open(&sound_config->pcm, "hw:0,0", SND_PCM_STREAM_PLAYBACK, 0);
     if (err < 0) {
         printf("failed at %s\n", snd_strerror(err));
@@ -64,17 +78,12 @@ int XInitSound(X_sound_config *sound_config) {
     // add one sec worth of buffer size i.e 48000 frames.
     // so that this one sec is always maintained between read and write pointer
     // of the audio ring buffer.
-    err = snd_pcm_hw_params_set_buffer_size(sound_config->pcm, hw_params, 48000);
+    err = snd_pcm_hw_params_set_buffer_size(sound_config->pcm, hw_params, PERIOD_SIZE * 2);
     if (err < 0) {
         printf("failed at %s\n", snd_strerror(err));
     }
-    err = snd_pcm_hw_params_set_period_time_near(sound_config->pcm, hw_params, &period_time, &dir);
-    if (err < 0) {
-        printf("failed at %s\n", snd_strerror(err));
-    }
-    // 48 period size * 1000 (100ms period time) == 1 second worth of buffer.
-    // period is the smallest unit of work read from sound buffer.
-    snd_pcm_uframes_t period_size = 512;
+    
+    snd_pcm_uframes_t period_size = PERIOD_SIZE;
     err = snd_pcm_hw_params_set_period_size_near(sound_config->pcm, hw_params, &period_size, &dir);
     if (err < 0) {
         printf("failed at %s\n", snd_strerror(err));
@@ -85,6 +94,7 @@ int XInitSound(X_sound_config *sound_config) {
         printf("failed at %s\n", snd_strerror(err));
     }
     state = snd_pcm_state(sound_config->pcm);
+    snd_pcm_dump(sound_config->pcm, sound_config->output);
     return err;
 }
 
@@ -196,7 +206,7 @@ int main() {
     gameSoundBuffer.phase = 0.0f;
     gameSoundBuffer.phase_increment = (2.0f * M_PI * gameSoundBuffer.frequency) / gameSoundBuffer.sample_rate;
     gameSoundBuffer.samples = (int16 *)malloc(48000 * 2 * 16);
-
+    gameSoundBuffer.framesToWrite = PERIOD_SIZE; 
     Display *display = XOpenDisplay(NULL);
     if (!display) {
         printf("Display not found\n");
@@ -244,7 +254,7 @@ int main() {
     memory.transientStorageSize = 256;
 
     real32 MonitorRefreshHz = 120.0f;
-    real32 GameUpdateHz = (MonitorRefreshHz/ 2.0f); // physics time.
+    real32 GameUpdateHz = (MonitorRefreshHz/ 2.0f);
     real32 TargetMSPerFrame = (1000.0f / GameUpdateHz);
 
     Game_input input = {};
@@ -256,18 +266,14 @@ int main() {
             handleEvent(event, &input);
         }
       
+        snd_pcm_dump(sound_config.pcm, sound_config.output);
+        snd_pcm_status_alloca(&sound_config.status);
+        snd_pcm_status_dump(sound_config.status, sound_config.output);
         // for the animation.
         // TODO: return the error codes from these functions as well.
         XUpdateBufferDims(display, window, &gameBuffer);
-        snd_pcm_sframes_t available = snd_pcm_avail_update(sound_config.pcm); 
-        if (available < 0) {
-            printf ("availability error %s\n", snd_strerror(available));
-            snd_pcm_recover(sound_config.pcm, available, 0);
-            available = snd_pcm_avail_update(sound_config.pcm);
-        }
-        gameSoundBuffer.framesToWrite = (available/60); // we only write the next "game" frame's worth of audio.
+        // rendering means writing into the memory.
         gameUpdateAndRender(&gameBuffer, &gameSoundBuffer, &input, &memory);
-
         
         clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
         real64 worktimeElapsedMS = XtimeElapsedMS(lastTime, endTime);
@@ -286,12 +292,24 @@ int main() {
             // NOTE: what to do? log perhaps.
         }
       
+        printf("time elapsed finally: physics time + render time %f\n", worktimeElapsedMS);
+        // this is flipping what was in the memory to the front.
+        XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer);
+        snd_pcm_sframes_t available = snd_pcm_avail_update(sound_config.pcm); 
+        if (available < 0) {
+            printf ("availability error %s\n", snd_strerror(available));
+            snd_pcm_recover(sound_config.pcm, available, 0);
+            available = snd_pcm_avail_update(sound_config.pcm);
+        }
+        printf("frames to write is %lu\n", available);
         int err = XFillSoundBuffer(&sound_config, &gameSoundBuffer);
         if (err < 0) {
             printf("Sound error \n");
             return err;
         }
-        XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
+        worktimeElapsedMS = XtimeElapsedMS(lastTime, endTime);
+        printf("time elapsed after flip %f\n", worktimeElapsedMS);
         // physics time has passed, rendering time on.
         // physics time + rendering time <= monitor frame rate.
         // printf("time elapsed in ms: %f\n", worktimeElapsedMS);
