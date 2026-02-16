@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <cstdint>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
@@ -8,17 +7,34 @@
 #include <math.h>
 #include <time.h>
 #include <x86intrin.h>
+#include <dlfcn.h>
 
-typedef uint8_t uint8;
-typedef uint16_t uint16;
-typedef uint32_t uint32;
-typedef uint64_t uint64;
-typedef int16_t int16;
-typedef float real32;
-typedef double real64;
-typedef struct timespec timespec;
+#include "handmade.h"
 
-#include "handmade.cpp"
+// stub
+GAME_UPDATE_AND_RENDER(gameUpdateAndRenderStub) {
+    printf("this is just a stub!\n");
+    return;
+}
+
+gameUpdateAndRender *GameUpdateAndRender;
+
+void loadLibrary() {
+    void *handle = dlopen("./libhandmade.so", RTLD_NOW);
+    if (handle) {
+        dlerror();
+        GameUpdateAndRender = (gameUpdateAndRender *)dlsym(handle, "gameUpdateAndRenderMain");
+        char *err = dlerror();
+        if (err != NULL) {
+            printf("Error while loading, falling back to stub %s!\n", err);
+            GameUpdateAndRender = &gameUpdateAndRenderStub;
+        } else {
+            printf("Loaded the actual call, %s!\n", err);
+        }
+    } else {
+        GameUpdateAndRender = &gameUpdateAndRenderStub;
+    }
+}
 
 // we only write the next "game" frame's worth of audio
 // i.e 1/60 th of a second which is the period size
@@ -75,9 +91,6 @@ int XInitSound(X_sound_config *sound_config) {
     if (err < 0) {
         printf("failed at %s\n", snd_strerror(err));
     }
-    // add one sec worth of buffer size i.e 48000 frames.
-    // so that this one sec is always maintained between read and write pointer
-    // of the audio ring buffer.
     err = snd_pcm_hw_params_set_buffer_size(sound_config->pcm, hw_params, PERIOD_SIZE * 2);
     if (err < 0) {
         printf("failed at %s\n", snd_strerror(err));
@@ -162,11 +175,11 @@ int XFillSoundBuffer(X_sound_config *sound_config,
         printf("can't write %s\n", snd_strerror(can_write));
         return -1;
     }
+
     /*
          [L0 R0] [L1 R1] where l and r are 16 bits each.
          and they mean left and right speaker, 2 samples per frame.
-        */
-
+    */
     int16 *ring_ptr= (int16 *)((uint8 *)areas[0].addr + (offset * areas[0].step / 8));
     int16 *sample_ptr = gameSoundBuffer->samples; 
     // copy from the samples array on the game's sound buffer to the actual ring buffer.
@@ -196,6 +209,7 @@ real64 XtimeElapsedMS (timespec lastTime, timespec endTime) {
 }
 
 int main() {
+    loadLibrary();
     X_sound_config sound_config = {};
     Game_sound_buffer gameSoundBuffer = {};
     X_offscreen_buffer xbuffer = {};
@@ -242,7 +256,7 @@ int main() {
     XGrabKeyboard(display, window, False, GrabModeAsync, GrabModeAsync, CurrentTime);
     XAutoRepeatOn(display); 
 
-    int err = XInitSound(&sound_config); 
+    // int err = XInitSound(&sound_config); 
     timespec lastTime;
     timespec endTime;
     unsigned long long lastTimeClock = __rdtsc();
@@ -265,15 +279,17 @@ int main() {
             XNextEvent(display, &event);
             handleEvent(event, &input);
         }
-      
+     
+#if HANDMADE_INTERNAL
         snd_pcm_dump(sound_config.pcm, sound_config.output);
         snd_pcm_status_alloca(&sound_config.status);
         snd_pcm_status_dump(sound_config.status, sound_config.output);
+#endif
         // for the animation.
         // TODO: return the error codes from these functions as well.
         XUpdateBufferDims(display, window, &gameBuffer);
         // rendering means writing into the memory.
-        gameUpdateAndRender(&gameBuffer, &gameSoundBuffer, &input, &memory);
+        GameUpdateAndRender(&gameBuffer, &gameSoundBuffer, &input, &memory);
         
         clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
         real64 worktimeElapsedMS = XtimeElapsedMS(lastTime, endTime);
@@ -295,34 +311,21 @@ int main() {
         printf("time elapsed finally: physics time + render time %f\n", worktimeElapsedMS);
         // this is flipping what was in the memory to the front.
         XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer);
-        snd_pcm_sframes_t available = snd_pcm_avail_update(sound_config.pcm); 
-        if (available < 0) {
-            printf ("availability error %s\n", snd_strerror(available));
-            snd_pcm_recover(sound_config.pcm, available, 0);
-            available = snd_pcm_avail_update(sound_config.pcm);
-        }
-        printf("frames to write is %lu\n", available);
-        int err = XFillSoundBuffer(&sound_config, &gameSoundBuffer);
-        if (err < 0) {
-            printf("Sound error \n");
-            return err;
-        }
+        // snd_pcm_sframes_t available = snd_pcm_avail_update(sound_config.pcm); 
+        // if (available < 0) {
+        //     printf ("availability error %s\n", snd_strerror(available));
+        //     snd_pcm_recover(sound_config.pcm, available, 0);
+        //     available = snd_pcm_avail_update(sound_config.pcm);
+        // }
+        // printf("frames to write is %lu\n", available);
+        // int err = XFillSoundBuffer(&sound_config, &gameSoundBuffer);
+        // if (err < 0) {
+        //     printf("Sound error \n");
+        //     return err;
+        // }
         clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
         worktimeElapsedMS = XtimeElapsedMS(lastTime, endTime);
         printf("time elapsed after flip %f\n", worktimeElapsedMS);
-        // physics time has passed, rendering time on.
-        // physics time + rendering time <= monitor frame rate.
-        // printf("time elapsed in ms: %f\n", worktimeElapsedMS);
-        // printf("FPS: %f\n", fps);
-
-        // unsigned long long endTimeClock = __rdtsc();
-        // real64 clockElapsed = endTimeClock - lastTimeClock; // in 10^13 order. 
-        // real64 clockTimeElapsedMS = (1000.0f * 10000.0f) / clockElapsed;
-        // printf("Clock time elapsed in ms : %f\n", clockTimeElapsedMS);
-        // lastTimeClock = endTimeClock;
-
-        // gameBuffer.YOffset++;
-        // swap old input with the new one to reset the values.
         input = {};
         clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
         lastTime = endTime;

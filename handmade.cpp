@@ -2,6 +2,9 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 
 void renderweirdgradient(Game_offscreen_buffer *gameBuffer, Game_state *state) {
     gameBuffer->data = (uint32 *)malloc(gameBuffer->width*gameBuffer->height*4); // 4 bytes for a pixel RR GG BB XX
@@ -56,10 +59,8 @@ void DEBUGPlatformFreeFileMemory(void *BitmapMemory) {
     free(BitmapMemory);
 }
 
-void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer,
-                         Game_sound_buffer *gameSoundBuffer,
-                         Game_input *input,
-                         Game_memory *memory) {
+extern "C"
+GAME_UPDATE_AND_RENDER(gameUpdateAndRenderMain) {
     Game_state *state = (Game_state *)memory->permanentStorage;
     char *filename = "build.sh";
     void *BitmapMemory = DEBUGPlatformReadEntireFile(filename);

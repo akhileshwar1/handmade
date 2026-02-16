@@ -1,6 +1,16 @@
 #ifndef HANDMADE_H
 #define HANDMADE_H
 
+#include <cstdint>
+typedef uint8_t uint8;
+typedef uint16_t uint16;
+typedef uint32_t uint32;
+typedef uint64_t uint64;
+typedef int16_t int16;
+typedef float real32;
+typedef double real64;
+typedef struct timespec timespec;
+
 #define kilobytes(value) (value*1024LL)
 #define megabytes(value) (kilobytes(value*1024LL))
 #define gigabytes(value) (megabytes(value*1024LL))
@@ -49,8 +59,10 @@ typedef struct {
     bool dWasPressed;
 } Game_input;
 
-void gameUpdateAndRender(Game_offscreen_buffer *gameBuffer, Game_sound_buffer *gameSoundBuffer,
-                         Game_input *input);
+#define GAME_UPDATE_AND_RENDER(name) \
+   void name(Game_offscreen_buffer *gameBuffer, Game_sound_buffer *gameSoundBuffer, Game_input *input, Game_memory *memory)
+
+typedef GAME_UPDATE_AND_RENDER(gameUpdateAndRender);
 
 /*
  Services the platform layer provides to the game play.
