@@ -2,7 +2,6 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 
@@ -37,35 +36,18 @@ void writeSound(Game_sound_buffer *gameSoundBuffer) {
 
 }
 
-void *DEBUGPlatformReadEntireFile(char *filename) {
-    int fd = open(filename, O_RDWR | O_APPEND);
-    if (fd < 0) {
-        return NULL;
-    }
-    struct stat sb;
-    uint32 fileSize;
-    if (stat(filename, &sb) < 0) {
-        return NULL;
-    }
-
-    Assert(sb.st_size < 0xffffffff) // my file size will be less than max(uint32)
-    fileSize = sb.st_size;
-    void *BitmapMemory = malloc(fileSize);
-    ssize_t bytesRead = read(fd, BitmapMemory, fileSize);
-    return BitmapMemory;
-}
-
-void DEBUGPlatformFreeFileMemory(void *BitmapMemory) {
-    free(BitmapMemory);
+extern "C"
+GET_SOUND_SAMPLES(getSoundSamplesMain) {
+    writeSound(gameSoundBuffer);
 }
 
 extern "C"
 GAME_UPDATE_AND_RENDER(gameUpdateAndRenderMain) {
     Game_state *state = (Game_state *)memory->permanentStorage;
     char *filename = "build.sh";
-    void *BitmapMemory = DEBUGPlatformReadEntireFile(filename);
+    void *BitmapMemory = memory->readEntireFile(filename);
     if(BitmapMemory) {
-        DEBUGPlatformFreeFileMemory(BitmapMemory);
+        memory->freeFileMemory(BitmapMemory);
     }
 
     if (input->wWasPressed) {
@@ -79,5 +61,4 @@ GAME_UPDATE_AND_RENDER(gameUpdateAndRenderMain) {
     }
     state->XOffset++;
     renderweirdgradient(gameBuffer, state);
-    writeSound(gameSoundBuffer);
 }

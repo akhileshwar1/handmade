@@ -35,11 +35,16 @@ typedef struct {
     int YOffset; 
 } Game_state;
 
+typedef void *DEBUGPlatformReadEntireFile(char *filename);
+typedef void DEBUGPlatformFreeFileMemory(void *BitmapMemory);
+
 typedef struct {
     uint64 permanentStorageSize;
     void *permanentStorage;
     uint64 transientStorageSize;
     void *transientStorage;
+    DEBUGPlatformReadEntireFile *readEntireFile;
+    DEBUGPlatformFreeFileMemory *freeFileMemory;
 } Game_memory;
 
 typedef struct {
@@ -60,9 +65,14 @@ typedef struct {
 } Game_input;
 
 #define GAME_UPDATE_AND_RENDER(name) \
-   void name(Game_offscreen_buffer *gameBuffer, Game_sound_buffer *gameSoundBuffer, Game_input *input, Game_memory *memory)
+   void name(Game_offscreen_buffer *gameBuffer, Game_input *input, Game_memory *memory)
 
 typedef GAME_UPDATE_AND_RENDER(gameUpdateAndRender);
+
+#define GET_SOUND_SAMPLES(name) \
+   void name(Game_sound_buffer *gameSoundBuffer)
+
+typedef GET_SOUND_SAMPLES(getSoundSamples);
 
 /*
  Services the platform layer provides to the game play.

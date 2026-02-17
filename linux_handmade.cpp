@@ -8,33 +8,9 @@
 #include <time.h>
 #include <x86intrin.h>
 #include <dlfcn.h>
+#include <sys/stat.h>
 
 #include "handmade.h"
-
-// stub
-GAME_UPDATE_AND_RENDER(gameUpdateAndRenderStub) {
-    printf("this is just a stub!\n");
-    return;
-}
-
-gameUpdateAndRender *GameUpdateAndRender;
-
-void loadLibrary() {
-    void *handle = dlopen("./libhandmade.so", RTLD_NOW);
-    if (handle) {
-        dlerror();
-        GameUpdateAndRender = (gameUpdateAndRender *)dlsym(handle, "gameUpdateAndRenderMain");
-        char *err = dlerror();
-        if (err != NULL) {
-            printf("Error while loading, falling back to stub %s!\n", err);
-            GameUpdateAndRender = &gameUpdateAndRenderStub;
-        } else {
-            printf("Loaded the actual call, %s!\n", err);
-        }
-    } else {
-        GameUpdateAndRender = &gameUpdateAndRenderStub;
-    }
-}
 
 // we only write the next "game" frame's worth of audio
 // i.e 1/60 th of a second which is the period size
@@ -54,6 +30,58 @@ typedef struct {
     snd_output_t *output;
     snd_pcm_status_t *status;
 } X_sound_config;
+
+typedef struct {
+    bool isValid;
+    gameUpdateAndRender *GameUpdateAndRender;
+    getSoundSamples *GetSoundSamples;
+    void *handle;
+} X_game_code;
+
+// stub
+GAME_UPDATE_AND_RENDER(gameUpdateAndRenderStub) {
+    printf("this is just a stub!\n");
+    return;
+}
+
+// stub
+GET_SOUND_SAMPLES(getSoundSamplesStub) {
+    printf("this is just a stub!\n");
+    return;
+}
+
+
+void loadGameCode(X_game_code *gameCode) {
+    gameCode->handle = dlopen("./libhandmade.so", RTLD_NOW);
+    if (gameCode->handle) {
+        dlerror();
+        gameCode->GameUpdateAndRender = (gameUpdateAndRender *)dlsym(gameCode->handle, "gameUpdateAndRenderMain");
+        gameCode->GetSoundSamples = (getSoundSamples *)dlsym(gameCode->handle, "getSoundSamplesMain");
+        char *err = dlerror();
+        if (err != NULL) {
+            printf("Error while loading, falling back to stub %s!\n", err);
+            gameCode->GameUpdateAndRender = &gameUpdateAndRenderStub;
+            gameCode->GetSoundSamples = &getSoundSamplesStub;
+        } else {
+            printf("Loaded the actual call, %s!\n", err);
+            gameCode->isValid = true;
+        }
+    } else {
+        gameCode->GameUpdateAndRender = &gameUpdateAndRenderStub;
+    }
+}
+
+void unloadGameCode(X_game_code *gameCode) {
+    if (gameCode->handle) {
+        dlclose(gameCode->handle);
+    }
+
+    if (gameCode->isValid) {
+        gameCode->GameUpdateAndRender = &gameUpdateAndRenderStub;
+        gameCode->GetSoundSamples = &getSoundSamplesStub;
+        gameCode->isValid = false;
+    }
+}
 
 int XInitSound(X_sound_config *sound_config) {
     snd_pcm_state_t state;
@@ -208,8 +236,32 @@ real64 XtimeElapsedMS (timespec lastTime, timespec endTime) {
     return timeElapsedMS;
 }
 
+void *PlatformReadEntireFile(char *filename) {
+    int fd = open(filename, O_RDWR | O_APPEND);
+    if (fd < 0) {
+        return NULL;
+    }
+    struct stat sb;
+    uint32 fileSize;
+    if (stat(filename, &sb) < 0) {
+        return NULL;
+    }
+
+    Assert(sb.st_size < 0xffffffff) // my file size will be less than max(uint32)
+    fileSize = sb.st_size;
+    void *BitmapMemory = malloc(fileSize);
+    ssize_t bytesRead = read(fd, BitmapMemory, fileSize);
+    return BitmapMemory;
+}
+
+void PlatformFreeFileMemory(void *BitmapMemory) {
+    free(BitmapMemory);
+}
+
 int main() {
-    loadLibrary();
+    X_game_code gameCode = {};
+    gameCode.isValid = false;
+    loadGameCode(&gameCode);
     X_sound_config sound_config = {};
     Game_sound_buffer gameSoundBuffer = {};
     X_offscreen_buffer xbuffer = {};
@@ -266,6 +318,8 @@ int main() {
     memory.transientStorage = malloc(megabytes(256));
     memory.permanentStorageSize = 256;
     memory.transientStorageSize = 256;
+    memory.readEntireFile = &PlatformReadEntireFile;
+    memory.freeFileMemory = &PlatformFreeFileMemory;
 
     real32 MonitorRefreshHz = 120.0f;
     real32 GameUpdateHz = (MonitorRefreshHz/ 2.0f);
@@ -289,7 +343,8 @@ int main() {
         // TODO: return the error codes from these functions as well.
         XUpdateBufferDims(display, window, &gameBuffer);
         // rendering means writing into the memory.
-        GameUpdateAndRender(&gameBuffer, &gameSoundBuffer, &input, &memory);
+        gameCode.GameUpdateAndRender(&gameBuffer, &input, &memory);
+        gameCode.GetSoundSamples(&gameSoundBuffer);
         
         clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
         real64 worktimeElapsedMS = XtimeElapsedMS(lastTime, endTime);
