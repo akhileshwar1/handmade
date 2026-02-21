@@ -18,6 +18,7 @@
 // is the interrupt time for the card i.e 1/60th 
 // period size determines the interrupt time.
 #define PERIOD_SIZE (4800 * 6)
+#define GAME_CODE_SO "./libhandmade.so"
 typedef struct {
     XImage *image;
     int screen; 
@@ -36,6 +37,7 @@ typedef struct {
     gameUpdateAndRender *GameUpdateAndRender;
     getSoundSamples *GetSoundSamples;
     void *handle;
+    time_t lastWriteTime;
 } X_game_code;
 
 // stub
@@ -52,8 +54,12 @@ GET_SOUND_SAMPLES(getSoundSamplesStub) {
 
 
 void loadGameCode(X_game_code *gameCode) {
-    gameCode->handle = dlopen("./libhandmade.so", RTLD_NOW);
-    if (gameCode->handle) {
+    char *error = dlerror();
+    printf("error after unload %s\n", error);
+    gameCode->handle = dlopen(GAME_CODE_SO, RTLD_NOW);
+    error = dlerror();
+    printf("error after open %s\n", error);
+    if (gameCode->handle != NULL) {
         dlerror();
         gameCode->GameUpdateAndRender = (gameUpdateAndRender *)dlsym(gameCode->handle, "gameUpdateAndRenderMain");
         gameCode->GetSoundSamples = (getSoundSamples *)dlsym(gameCode->handle, "getSoundSamplesMain");
@@ -68,12 +74,16 @@ void loadGameCode(X_game_code *gameCode) {
         }
     } else {
         gameCode->GameUpdateAndRender = &gameUpdateAndRenderStub;
+        gameCode->GetSoundSamples = &getSoundSamplesStub;
+        printf("No handle, falling back to stub !\n");
     }
 }
 
 void unloadGameCode(X_game_code *gameCode) {
-    if (gameCode->handle) {
-        dlclose(gameCode->handle);
+    if (gameCode->handle != NULL) {
+        int err = dlclose(gameCode->handle);
+        gameCode->handle = NULL;
+        printf("err is %d\n", err);
     }
 
     if (gameCode->isValid) {
@@ -237,8 +247,11 @@ real64 XtimeElapsedMS (timespec lastTime, timespec endTime) {
 }
 
 void *PlatformReadEntireFile(char *filename) {
+    printf("opening %s \n", filename);
     int fd = open(filename, O_RDWR | O_APPEND);
+    printf("opened %s %d\n", filename, fd);
     if (fd < 0) {
+        close(fd);
         return NULL;
     }
     struct stat sb;
@@ -251,6 +264,8 @@ void *PlatformReadEntireFile(char *filename) {
     fileSize = sb.st_size;
     void *BitmapMemory = malloc(fileSize);
     ssize_t bytesRead = read(fd, BitmapMemory, fileSize);
+    int err = close(fd);
+    printf("close is %d\n", err);
     return BitmapMemory;
 }
 
@@ -258,9 +273,20 @@ void PlatformFreeFileMemory(void *BitmapMemory) {
     free(BitmapMemory);
 }
 
+int getLastWriteTime(char *filename, time_t *time) {
+    struct stat sb;
+    if (stat(filename, &sb) == -1) {
+        return -1;
+    }
+
+    *time = sb.st_mtime;
+    return 0;
+}
+
 int main() {
     X_game_code gameCode = {};
     gameCode.isValid = false;
+    gameCode.handle = NULL;
     loadGameCode(&gameCode);
     X_sound_config sound_config = {};
     Game_sound_buffer gameSoundBuffer = {};
@@ -327,6 +353,10 @@ int main() {
 
     Game_input input = {};
     clock_gettime(CLOCK_MONOTONIC_RAW, &lastTime);
+    time_t lastWriteTime;
+    getLastWriteTime(GAME_CODE_SO, &lastWriteTime);
+    printf("last write time is %u\n", ctime(&lastWriteTime));
+    gameCode.lastWriteTime = lastWriteTime;
     while (Running) {
         while (XPending(display)) {
             XEvent event;
@@ -334,6 +364,17 @@ int main() {
             handleEvent(event, &input);
         }
      
+        int err = getLastWriteTime(GAME_CODE_SO, &lastWriteTime);
+        printf("last write timee is %u\n", ctime(&lastWriteTime));
+        if(err != -1 && (gameCode.lastWriteTime != lastWriteTime)) {
+            // reload
+            printf("RELOADING \n");
+            unloadGameCode(&gameCode);
+            loadGameCode(&gameCode);
+            gameCode.lastWriteTime = lastWriteTime;
+            printf("Reloaded Game code\n");
+        }
+
 #if HANDMADE_INTERNAL
         snd_pcm_dump(sound_config.pcm, sound_config.output);
         snd_pcm_status_alloca(&sound_config.status);

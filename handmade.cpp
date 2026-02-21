@@ -13,7 +13,7 @@ void renderweirdgradient(Game_offscreen_buffer *gameBuffer, Game_state *state) {
         for (int x = 0; x < gameBuffer->width; ++x) {
             uint8 blue = (uint8)(x + state->XOffset);
             uint8 green = (uint8)(y + state->YOffset);
-            *ptr++ = (green << 8) | blue;
+            *ptr++ = (green << 16) | blue;
         }
     }
 }
@@ -44,11 +44,11 @@ GET_SOUND_SAMPLES(getSoundSamplesMain) {
 extern "C"
 GAME_UPDATE_AND_RENDER(gameUpdateAndRenderMain) {
     Game_state *state = (Game_state *)memory->permanentStorage;
-    char *filename = "build.sh";
-    void *BitmapMemory = memory->readEntireFile(filename);
-    if(BitmapMemory) {
-        memory->freeFileMemory(BitmapMemory);
-    }
+    // char *filename = "random_notes.md";
+    // void *BitmapMemory = memory->readEntireFile(filename);
+    // if(BitmapMemory) {
+    //     memory->freeFileMemory(BitmapMemory);
+    // }
 
     if (input->wWasPressed) {
        state->YOffset++;

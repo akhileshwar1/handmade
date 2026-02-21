@@ -1,6 +1,7 @@
 #!/bin/sh
 set -e
 
+# rand=$RANDOM
 # Build game library.
 clang \
     -g -O0 \
@@ -11,6 +12,8 @@ clang \
     -shared \
     handmade.cpp \
     -o libhandmade.so
+
+mv libhandmade_temp.so libhandmade.so
 
 # Build platform executable.
 clang \
