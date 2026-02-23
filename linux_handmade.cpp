@@ -157,7 +157,9 @@ void XUpdateBufferDims(Display *display, Window window, Game_offscreen_buffer *g
 }
 
 void XDisplayBufferInWindow(Display *display, Window window, GC gc,
-                    X_offscreen_buffer *xbuffer, Game_offscreen_buffer *gameBuffer) {
+                            X_offscreen_buffer *xbuffer,
+                            Game_offscreen_buffer *gameBuffer,
+                            Game_state *state) {
     if(xbuffer->image) {
         XDestroyImage(xbuffer->image); // also frees the inner data.
     }
@@ -167,6 +169,9 @@ void XDisplayBufferInWindow(Display *display, Window window, GC gc,
                                  gameBuffer->height, 8, gameBuffer->width*4);
     
     XPutImage(display, window, gc, xbuffer->image, 0, 0, 0, 0, gameBuffer->width, gameBuffer->height);
+
+    // show the player.
+    XDrawRectangle(display, window, gc, state->playerX, state->playerY, state->playerWidth, state->playerHeight);
 }
 
 
@@ -341,6 +346,11 @@ int main() {
     Game_memory memory = {};
     uint64 size = megabytes(256);
     memory.permanentStorage = malloc(megabytes(256));
+    Game_state *state = (Game_state *)memory.permanentStorage;
+    state->playerX = 0;
+    state->playerY = 0;
+    state->playerWidth = 20;
+    state->playerHeight = 20;
     memory.transientStorage = malloc(megabytes(256));
     memory.permanentStorageSize = 256;
     memory.transientStorageSize = 256;
@@ -406,7 +416,7 @@ int main() {
       
         printf("time elapsed finally: physics time + render time %f\n", worktimeElapsedMS);
         // this is flipping what was in the memory to the front.
-        XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer);
+        XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer, state);
         // snd_pcm_sframes_t available = snd_pcm_avail_update(sound_config.pcm); 
         // if (available < 0) {
         //     printf ("availability error %s\n", snd_strerror(available));

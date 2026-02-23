@@ -13,8 +13,6 @@ clang \
     handmade.cpp \
     -o libhandmade.so
 
-mv libhandmade_temp.so libhandmade.so
-
 # Build platform executable.
 clang \
     -g -O0 \

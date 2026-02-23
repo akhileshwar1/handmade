@@ -33,6 +33,10 @@ typedef struct {
 typedef struct {
     int XOffset;
     int YOffset; 
+    uint32 playerX;
+    uint32 playerY;
+    uint32 playerWidth;
+    uint32 playerHeight;
 } Game_state;
 
 typedef void *DEBUGPlatformReadEntireFile(char *filename);

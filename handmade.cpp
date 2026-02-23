@@ -52,12 +52,16 @@ GAME_UPDATE_AND_RENDER(gameUpdateAndRenderMain) {
 
     if (input->wWasPressed) {
        state->YOffset++;
+       state->playerY++;
     } else if (input->aWasPressed) {
         state->XOffset--;
+        state->playerX--;
     } else if (input->sWasPressed) {
         state->YOffset--;
+        state->playerY--;
     } else if (input->dWasPressed) {
         state->XOffset++;
+        state->playerX++;
     }
     state->XOffset++;
     renderweirdgradient(gameBuffer, state);
