@@ -62,6 +62,7 @@ typedef struct {
 } Game_sound_buffer;
 
 typedef struct {
+    bool isValid;
     bool wWasPressed;
     bool aWasPressed;
     bool sWasPressed;

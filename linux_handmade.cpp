@@ -9,14 +9,17 @@
 #include <x86intrin.h>
 #include <dlfcn.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "handmade.h"
 
-// we only write the next "game" frame's worth of audio
-// i.e 1/60 th of a second which is the period size
-// 48000 * 2 * 2 (bytes/sec) / 4800 * 2 * 2 * 6 (bytes/interrupt)
-// is the interrupt time for the card i.e 1/60th 
-// period size determines the interrupt time.
+/*
+    we only write the next "game" frame's worth of audio
+    i.e 1/60 th of a second which is the period size
+    48000 * 2 * 2 (bytes/sec) / 4800 * 2 * 2 * 6 (bytes/interrupt)
+    is the interrupt time for the card i.e 1/60th 
+    period size determines the interrupt time.
+*/
 #define PERIOD_SIZE (4800 * 6)
 #define GAME_CODE_SO "./libhandmade.so"
 typedef struct {
@@ -39,6 +42,15 @@ typedef struct {
     void *handle;
     time_t lastWriteTime;
 } X_game_code;
+
+typedef struct {
+    bool recording;
+    int recordingHandle;
+    uint32 count;
+    bool playback;
+    int playbackHandle;
+    Game_state savedGameState;
+} X_state;
 
 // stub
 GAME_UPDATE_AND_RENDER(gameUpdateAndRenderStub) {
@@ -159,7 +171,7 @@ void XUpdateBufferDims(Display *display, Window window, Game_offscreen_buffer *g
 void XDisplayBufferInWindow(Display *display, Window window, GC gc,
                             X_offscreen_buffer *xbuffer,
                             Game_offscreen_buffer *gameBuffer,
-                            Game_state *state) {
+                            Game_state *gameState) {
     if(xbuffer->image) {
         XDestroyImage(xbuffer->image); // also frees the inner data.
     }
@@ -171,12 +183,74 @@ void XDisplayBufferInWindow(Display *display, Window window, GC gc,
     XPutImage(display, window, gc, xbuffer->image, 0, 0, 0, 0, gameBuffer->width, gameBuffer->height);
 
     // show the player.
-    XDrawRectangle(display, window, gc, state->playerX, state->playerY, state->playerWidth, state->playerHeight);
+    XDrawRectangle(display, window, gc, gameState->playerX, gameState->playerY, gameState->playerWidth, gameState->playerHeight);
 }
 
+void XBeginRecordingInput(X_state *xstate, Game_state gameState) {
+    xstate->recording = true;
+    // open the file and set the handle.
+    int fd = open("foo.hmi", O_RDWR | O_APPEND);
+    if (fd < 0) {
+        printf("Failed to start recording\n");
+        return;
+    }
+
+    xstate->savedGameState = gameState;
+    xstate->recordingHandle = fd;
+    xstate->count = 0;
+}
+
+void XStopRecordingInput(X_state *xstate, Game_state *gameState) {
+    *gameState = (xstate->savedGameState); // load the saved game state.
+    xstate->recording = false;
+    close(xstate->recordingHandle);
+    xstate->recordingHandle = -1;
+}
+
+void XRecordInput(X_state *xstate, Game_input *input) {
+    int bytesWritten = write(xstate->recordingHandle, input, sizeof(*input));
+    if(bytesWritten < 0) {
+        printf("No bytes written\n");
+        return;
+    }
+    xstate->count++;
+    printf("recorded input\n");
+}
+
+void XBeginPlaybackInput(X_state *xstate) {
+    xstate->playback = true;
+    // open the file and set the handle.
+    int fd = open("foo.hmi", O_RDWR | O_APPEND);
+    if (fd < 0) {
+        printf("Failed to start playback\n");
+        return;
+    }
+
+    xstate->playbackHandle = fd;
+}
+
+void XPlaybackInput(X_state *xstate, Game_input *input) {
+    int bytesRead = read(xstate->playbackHandle, input, sizeof(*input));
+    if(bytesRead <= 0) {
+        printf("No bytes read, closing handle\n");
+        close(xstate->playbackHandle);
+        return;
+    }
+    printf("played back input\n");
+    xstate->count--;
+}
+
+void XEndPlaybackInput(X_state *xstate) {
+    ftruncate(xstate->playbackHandle, 0); //clear the file.
+    close(xstate->playbackHandle);
+    close(xstate->recordingHandle);
+    xstate->playback = false;
+}
 
 void handleEvent(XEvent event,
-                 Game_input *input) {
+                 Game_input *input,
+                 X_state *xstate, 
+                 Game_state *gameState) {
     switch (event.type) {
         case KeyPress:
             printf("key pressed \n");
@@ -186,15 +260,27 @@ void handleEvent(XEvent event,
             KeySym sym = XLookupKeysym(&event.xkey, 0);
             if (sym == XK_w) {
                 input->wWasPressed = true;
+                input->isValid = true;
             }
             if (sym == XK_a) {
                 input->aWasPressed = true;
+                input->isValid = true;
             }
             if (sym == XK_s) {
                 input->sWasPressed = true;
+                input->isValid = true;
             }
             if (sym == XK_d) {
                 input->dWasPressed = true;
+                input->isValid = true;
+            }
+            if (sym == XK_l) {
+                if(xstate->recording) {
+                    XStopRecordingInput(xstate, gameState);
+                    XBeginPlaybackInput(xstate);
+                } else {
+                    XBeginRecordingInput(xstate, *gameState);
+                }
             }
         } break;
         case ConfigureNotify: {
@@ -346,11 +432,11 @@ int main() {
     Game_memory memory = {};
     uint64 size = megabytes(256);
     memory.permanentStorage = malloc(megabytes(256));
-    Game_state *state = (Game_state *)memory.permanentStorage;
-    state->playerX = 0;
-    state->playerY = 0;
-    state->playerWidth = 20;
-    state->playerHeight = 20;
+    Game_state *gameState = (Game_state *)memory.permanentStorage;
+    gameState->playerX = 0;
+    gameState->playerY = 0;
+    gameState->playerWidth = 20;
+    gameState->playerHeight = 20;
     memory.transientStorage = malloc(megabytes(256));
     memory.permanentStorageSize = 256;
     memory.transientStorageSize = 256;
@@ -367,11 +453,23 @@ int main() {
     getLastWriteTime(GAME_CODE_SO, &lastWriteTime);
     printf("last write time is %u\n", ctime(&lastWriteTime));
     gameCode.lastWriteTime = lastWriteTime;
+    X_state xstate = {};
+    xstate.recording = false;
+    xstate.count = 0;
+    xstate.playback = false;
     while (Running) {
         while (XPending(display)) {
             XEvent event;
             XNextEvent(display, &event);
-            handleEvent(event, &input);
+            handleEvent(event, &input, &xstate, gameState);
+        }
+
+        if (xstate.playback) {
+            if (xstate.count > 0) {
+                XPlaybackInput(&xstate, &input);
+            } else {
+                XEndPlaybackInput(&xstate);
+            }
         }
      
         int err = getLastWriteTime(GAME_CODE_SO, &lastWriteTime);
@@ -393,10 +491,13 @@ int main() {
         // for the animation.
         // TODO: return the error codes from these functions as well.
         XUpdateBufferDims(display, window, &gameBuffer);
+
+        if (xstate.recording && input.isValid) {
+            XRecordInput(&xstate, &input);
+        }
         // rendering means writing into the memory.
         gameCode.GameUpdateAndRender(&gameBuffer, &input, &memory);
         gameCode.GetSoundSamples(&gameSoundBuffer);
-        
         clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
         real64 worktimeElapsedMS = XtimeElapsedMS(lastTime, endTime);
         real64 fps = 1000.0f / worktimeElapsedMS;
@@ -416,7 +517,7 @@ int main() {
       
         printf("time elapsed finally: physics time + render time %f\n", worktimeElapsedMS);
         // this is flipping what was in the memory to the front.
-        XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer, state);
+        XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer, gameState);
         // snd_pcm_sframes_t available = snd_pcm_avail_update(sound_config.pcm); 
         // if (available < 0) {
         //     printf ("availability error %s\n", snd_strerror(available));
@@ -433,6 +534,7 @@ int main() {
         worktimeElapsedMS = XtimeElapsedMS(lastTime, endTime);
         printf("time elapsed after flip %f\n", worktimeElapsedMS);
         input = {};
+        input.isValid = false;
         clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
         lastTime = endTime;
     }
