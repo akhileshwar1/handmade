@@ -168,7 +168,7 @@ void XUpdateBufferDims(Display *display, Window window, Game_offscreen_buffer *g
     gameBuffer->height = attrs.height;
 }
 
-void XDisplayBufferInWindow(Display *display, Window window, GC gc,
+int XDisplayBufferInWindow(Display *display, Window window, GC gc,
                             X_offscreen_buffer *xbuffer,
                             Game_offscreen_buffer *gameBuffer,
                             Game_state *gameState) {
@@ -180,10 +180,19 @@ void XDisplayBufferInWindow(Display *display, Window window, GC gc,
                                  0, (char *)gameBuffer->data, gameBuffer->width,
                                  gameBuffer->height, 8, gameBuffer->width*4);
     
-    XPutImage(display, window, gc, xbuffer->image, 0, 0, 0, 0, gameBuffer->width, gameBuffer->height);
+    int err = XPutImage(display, window, gc, xbuffer->image, 0, 0, 0, 0, gameBuffer->width, gameBuffer->height);
+    if (err < 0) {
+        printf("Cannot blit image, abort\n");
+        return err;
+    }
 
     // show the player.
-    XDrawRectangle(display, window, gc, gameState->playerX, gameState->playerY, gameState->playerWidth, gameState->playerHeight);
+    err = XDrawRectangle(display, window, gc, gameState->playerX, gameState->playerY, gameState->playerWidth, gameState->playerHeight);
+    if (err < 0) {
+        printf("cannot blit player, abort\n");
+        return err;
+    }
+    return 0;
 }
 
 void XBeginRecordingInput(X_state *xstate, Game_state gameState) {
@@ -354,7 +363,7 @@ void *PlatformReadEntireFile(char *filename) {
     Assert(sb.st_size < 0xffffffff) // my file size will be less than max(uint32)
     fileSize = sb.st_size;
     void *BitmapMemory = malloc(fileSize);
-    ssize_t bytesRead = read(fd, BitmapMemory, fileSize);
+    read(fd, BitmapMemory, fileSize);
     int err = close(fd);
     printf("close is %d\n", err);
     return BitmapMemory;
@@ -422,8 +431,17 @@ int main() {
 
     printf("Window created and mapped\n"); 
     bool Running = true;
-    XGrabKeyboard(display, window, False, GrabModeAsync, GrabModeAsync, CurrentTime);
-    XAutoRepeatOn(display); 
+    int err = XGrabKeyboard(display, window, False, 
+                      GrabModeAsync, GrabModeAsync, CurrentTime);
+    if (err < 0) {
+        printf("Couldn't grab keyboard, abort\n");
+        return err;
+    } 
+    err = XAutoRepeatOn(display); 
+    if (err < 0) {
+        printf("Couldn't set autorepeat, abort\n");
+        return err;
+    }
 
     // int err = XInitSound(&sound_config); 
     timespec lastTime;
@@ -432,12 +450,20 @@ int main() {
     Game_memory memory = {};
     uint64 size = megabytes(256);
     memory.permanentStorage = malloc(megabytes(256));
+    if (memory.permanentStorage == NULL) {
+        printf("malloc failed, abort\n");
+        return -1;
+    }
     Game_state *gameState = (Game_state *)memory.permanentStorage;
     gameState->playerX = 0;
     gameState->playerY = 0;
     gameState->playerWidth = 20;
     gameState->playerHeight = 20;
     memory.transientStorage = malloc(megabytes(256));
+    if (memory.transientStorage == NULL) {
+        printf("malloc failed, abort\n");
+        return -1;
+    }
     memory.permanentStorageSize = 256;
     memory.transientStorageSize = 256;
     memory.readEntireFile = &PlatformReadEntireFile;
@@ -450,8 +476,11 @@ int main() {
     Game_input input = {};
     clock_gettime(CLOCK_MONOTONIC_RAW, &lastTime);
     time_t lastWriteTime;
-    getLastWriteTime(GAME_CODE_SO, &lastWriteTime);
-    printf("last write time is %u\n", ctime(&lastWriteTime));
+    err = getLastWriteTime(GAME_CODE_SO, &lastWriteTime);
+    if (err < 0) {
+        printf("Couldn't get last write time\n");
+    }
+    printf("last write time is %s\n", ctime(&lastWriteTime));
     gameCode.lastWriteTime = lastWriteTime;
     X_state xstate = {};
     xstate.recording = false;
@@ -460,7 +489,11 @@ int main() {
     while (Running) {
         while (XPending(display)) {
             XEvent event;
-            XNextEvent(display, &event);
+            err = XNextEvent(display, &event);
+            if (err < 0) {
+                printf("Couldn't get event, abort\n");
+                return err;
+            }
             handleEvent(event, &input, &xstate, gameState);
         }
 
@@ -473,7 +506,7 @@ int main() {
         }
      
         int err = getLastWriteTime(GAME_CODE_SO, &lastWriteTime);
-        printf("last write timee is %u\n", ctime(&lastWriteTime));
+        printf("last write timee is %s\n", ctime(&lastWriteTime));
         if(err != -1 && (gameCode.lastWriteTime != lastWriteTime)) {
             // reload
             printf("RELOADING \n");
@@ -489,7 +522,6 @@ int main() {
         snd_pcm_status_dump(sound_config.status, sound_config.output);
 #endif
         // for the animation.
-        // TODO: return the error codes from these functions as well.
         XUpdateBufferDims(display, window, &gameBuffer);
 
         if (xstate.recording && input.isValid) {
@@ -500,7 +532,7 @@ int main() {
         gameCode.GetSoundSamples(&gameSoundBuffer);
         clock_gettime(CLOCK_MONOTONIC_RAW, &endTime);
         real64 worktimeElapsedMS = XtimeElapsedMS(lastTime, endTime);
-        real64 fps = 1000.0f / worktimeElapsedMS;
+        // real64 fps = 1000.0f / worktimeElapsedMS;
         printf("time taken : physics time %f, %f\n", worktimeElapsedMS, TargetMSPerFrame);
         if (worktimeElapsedMS < TargetMSPerFrame) {
             printf("Less time taken!\n");
@@ -517,7 +549,10 @@ int main() {
       
         printf("time elapsed finally: physics time + render time %f\n", worktimeElapsedMS);
         // this is flipping what was in the memory to the front.
-        XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer, gameState);
+        err = XDisplayBufferInWindow(display, window, gc, &xbuffer, &gameBuffer, gameState);
+        if (err < 0) {
+            return err;
+        }
         // snd_pcm_sframes_t available = snd_pcm_avail_update(sound_config.pcm); 
         // if (available < 0) {
         //     printf ("availability error %s\n", snd_strerror(available));
